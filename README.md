@@ -72,6 +72,6 @@ Release builds are signed through a local `keystore.properties` file (see `keyst
 - **DataStore**: user preferences and app settings
 - **Coil**: image loading for thumbnails and reference images
 
-## 📄 Status & license
+## license
 
-This is a personal project under active development. No license has been chosen yet — all rights reserved for now.
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
