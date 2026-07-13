@@ -1,19 +1,21 @@
-<div align="center">
-<a href="https://github.com/yighy/paintcursor" target="blank">
-<img src="app/src/main/ic_launcher-playstore.png" width="100" alt="Logo" />
-</a>
+<p align=center><image src="app/src/main/ic_launcher-playstore.png" height="200" /></p>
+<h1 align="center">Paint Cursor</h1>
+<p align="center">A cursor-based drawing app for Android</p>
+<p align="center">
+  <a href="https://github.com/yighy/paintcursor/releases">
+    <img src="https://img.shields.io/github/v/release/yighy/paintcursor?style=for-the-badge&logo=GitHub&include_prereleases" alt="GitHub release" />
+  </a>
+</p>
 
-<h2> Paint Cursor </h2>
+<!-- Screenshots here
 
-![](https://img.shields.io/badge/Kotlin-a503fc?logo=kotlin&logoColor=white&style=for-the-badge)
-![](https://img.shields.io/static/v1?style=for-the-badge&message=Jetpack+Compose&color=4285F4&logo=Jetpack+Compose&logoColor=FFFFFF&label=)
-![](https://custom-icon-badges.demolab.com/badge/m3%20expressive-lightblue?style=for-the-badge&logoColor=333&logo=material-you)
+<p align=center>
+<image src="" height="512"/>
+<image src="" height="512"/>
+<image src="" height="512"/>
 
-![](https://img.shields.io/github/v/release/yighy/paintcursor?color=purple&include_prereleases&logo=github&style=for-the-badge)
-
-<!-- TODO screenshots: <img src="art/screenshots.png" width="95%"> -->
-
-</div>
+-->
+---
 
 ## 💡 Overview
 
