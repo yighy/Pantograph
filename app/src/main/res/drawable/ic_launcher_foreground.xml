@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Bold S-shaped brush stroke (orange gradient, bright at the top) with the
+         cursor badge - a white disc with an orange plus - sitting at the stroke's
+         top end. Vector recreation of the provided icon artwork, fitted inside the
+         adaptive safe zone (r~33 around 54,54). -->
+
+    <!-- The S stroke -->
+    <path
+        android:pathData="M67,38 C60,30 46,29 41,36 C36,43 42,50 50,53 C58,56 64,62 59,70 C54,77 42,76 38,69"
+        android:strokeWidth="12"
+        android:strokeLineCap="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="29"
+                android:endX="54"
+                android:endY="77">
+                <item android:offset="0" android:color="#F08133" />
+                <item android:offset="1" android:color="#C75E23" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Reticle cursor at the stroke's end: open circle + crosshair extending
+         beyond it + center dot, like the in-app cursor -->
+    <path
+        android:strokeColor="#F7F2E9"
+        android:strokeWidth="2"
+        android:pathData="M67,38m-8,0a8,8 0 1,1 16,0a8,8 0 1,1 -16,0" />
+    <path
+        android:strokeColor="#F7F2E9"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M54,38 L80,38" />
+    <path
+        android:strokeColor="#F7F2E9"
+        android:strokeWidth="2.2"
+        android:strokeLineCap="round"
+        android:pathData="M67,25 L67,51" />
+    <path
+        android:fillColor="#F7F2E9"
+        android:pathData="M67,38m-1.2,0a1.2,1.2 0 1,1 2.4,0a1.2,1.2 0 1,1 -2.4,0" />
+</vector>
