@@ -233,7 +233,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         )
                     }
                     Text(
-                        "Tap to pick an image â€¢ Texture: white keeps paint, dark cuts it",
+                        "Tap to pick an image • Texture: white keeps paint, dark cuts it",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -421,7 +421,7 @@ fun BrushPresetCard(
                                     color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Size: ${brush.size.toInt()}px â€¢ Opacity: ${(brush.opacity*100).toInt()}% â€¢ Flow: ${(brush.flow*100).toInt()}%",
+                                    text = "Size: ${brush.size.toInt()}px • Opacity: ${(brush.opacity*100).toInt()}% • Flow: ${(brush.flow*100).toInt()}%",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )
