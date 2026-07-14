@@ -124,7 +124,7 @@ fun DrawingToolbar(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -142,8 +142,8 @@ fun DrawingToolbar(
                 ) {
                     Row(
                         modifier = Modifier.horizontalScroll(scrollState),
-                        verticalAlignment = Alignment.CenterVertically, 
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         val isEraser = drawingMode is DrawingMode.Eraser || drawingMode is DrawingMode.StraightLineEraser
                         val isStraightLine = drawingMode is DrawingMode.StraightLine || drawingMode is DrawingMode.StraightLineEraser
@@ -271,14 +271,14 @@ fun DrawingToolbar(
                 // Vertical Separator
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 8.dp)
+                        .padding(horizontal = 4.dp)
                         .width(1.dp)
                         .height(24.dp)
                         .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 )
 
                 // Center: Brush & Color Picker
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     ToolToggleButton(
                         selected = activePanel == ToolbarPanel.Brush,
                         onClick = { activePanel = if (activePanel == ToolbarPanel.Brush) ToolbarPanel.None else ToolbarPanel.Brush },
@@ -325,11 +325,11 @@ fun DrawingToolbar(
                         icon = Icons.Rounded.Tune
                     )
 
-                    IconButton(onClick = { viewModel.undo() }, enabled = canUndo, modifier = Modifier.size(36.dp)) { 
-                        Icon(Icons.AutoMirrored.Rounded.Undo, null, modifier = Modifier.size(20.dp)) 
+                    IconButton(onClick = { viewModel.undo() }, enabled = canUndo, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.AutoMirrored.Rounded.Undo, null, modifier = Modifier.size(20.dp))
                     }
-                    IconButton(onClick = { viewModel.redo() }, enabled = canRedo, modifier = Modifier.size(36.dp)) { 
-                        Icon(Icons.AutoMirrored.Rounded.Redo, null, modifier = Modifier.size(20.dp)) 
+                    IconButton(onClick = { viewModel.redo() }, enabled = canRedo, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.AutoMirrored.Rounded.Redo, null, modifier = Modifier.size(20.dp))
                     }
                 }
             }
