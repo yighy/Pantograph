@@ -1337,14 +1337,16 @@ class DrawingViewModel(
         }
     }
 
+    /**
+     * Scanline flood fill over a primitive int stack: expands whole horizontal runs at a
+     * time and never allocates per pixel (the naive per-pixel queue boxed millions of
+     * points on large canvases, which is what made fills slow and GC-heavy).
+     */
     private fun floodFillAlgorithm(bitmap: Bitmap, x: Int, y: Int, targetColor: Int, replacementColor: Int) {
         val width = bitmap.width
         val height = bitmap.height
         val pixels = IntArray(width * height)
         bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
-
-        val queue: Queue<Point> = LinkedList()
-        queue.add(Point(x, y))
 
         val tolerance = _uiState.value.fillTolerance
         val visited = java.util.BitSet(width * height)
@@ -1359,34 +1361,54 @@ class DrawingViewModel(
         val targetG = android.graphics.Color.green(targetColor)
         val targetB = android.graphics.Color.blue(targetColor)
 
-        while (queue.isNotEmpty()) {
-            val p = queue.remove()
-            val px = p.x
-            val py = p.y
-
-            if (px < 0 || px >= width || py < 0 || py >= height) continue
-            
-            val index = py * width + px
-            if (visited.get(index)) continue
-            if (maskPixels != null && (maskPixels[index] ushr 24) == 0) continue
-
+        // Fillable = not yet filled, inside the selection, and within tolerance of the target
+        fun matches(index: Int): Boolean {
+            if (visited.get(index)) return false
+            if (maskPixels != null && (maskPixels[index] ushr 24) == 0) return false
             val color = pixels[index]
-            
             val diffA = abs(android.graphics.Color.alpha(color) - targetA)
             val diffR = abs(android.graphics.Color.red(color) - targetR)
             val diffG = abs(android.graphics.Color.green(color) - targetG)
             val diffB = abs(android.graphics.Color.blue(color) - targetB)
-            
-            val maxDiff = max(max(diffR, diffG), diffB) // Simple tolerance check
-            
-            if (maxDiff <= tolerance && diffA <= tolerance) {
-                pixels[index] = replacementColor
-                visited.set(index)
+            return max(max(diffR, diffG), diffB) <= tolerance && diffA <= tolerance
+        }
 
-                queue.add(Point(px + 1, py))
-                queue.add(Point(px - 1, py))
-                queue.add(Point(px, py + 1))
-                queue.add(Point(px, py - 1))
+        // Stack of seed pixel indices; one seed per horizontal run
+        var stack = IntArray(1024)
+        var sp = 0
+        fun push(index: Int) {
+            if (sp == stack.size) stack = stack.copyOf(sp * 2)
+            stack[sp++] = index
+        }
+
+        push(y * width + x)
+        while (sp > 0) {
+            val seed = stack[--sp]
+            if (!matches(seed)) continue
+
+            val py = seed / width
+            val rowStart = py * width
+            var x0 = seed - rowStart
+            var x1 = x0
+            while (x0 > 0 && matches(rowStart + x0 - 1)) x0--
+            while (x1 < width - 1 && matches(rowStart + x1 + 1)) x1++
+            for (i in rowStart + x0..rowStart + x1) {
+                pixels[i] = replacementColor
+                visited.set(i)
+            }
+
+            // Seed the adjacent rows: one push per contiguous fillable run under the span
+            // (the popped seed re-expands past the span bounds if the run is wider)
+            for (ny in py - 1..py + 1 step 2) {
+                if (ny < 0 || ny >= height) continue
+                val nRow = ny * width
+                var i = x0
+                while (i <= x1) {
+                    if (matches(nRow + i)) {
+                        push(nRow + i)
+                        do i++ while (i <= x1 && matches(nRow + i))
+                    } else i++
+                }
             }
         }
         bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
@@ -1580,12 +1602,21 @@ class DrawingViewModel(
     private suspend fun generateThumbnailNow(state: DrawingState) {
         if (state.canvasWidth <= 0 || state.canvasHeight <= 0) return
         withContext(Dispatchers.Default) {
-            val thumb = Bitmap.createBitmap(state.canvasWidth, state.canvasHeight, Bitmap.Config.ARGB_8888)
+            // Render directly at thumbnail size (max 512px): a full-resolution render + PNG
+            // encode is wasted work for a home-grid preview
+            val scale = min(1f, 512f / max(state.canvasWidth, state.canvasHeight))
+            val tw = (state.canvasWidth * scale).toInt().coerceAtLeast(1)
+            val th = (state.canvasHeight * scale).toInt().coerceAtLeast(1)
+            val thumb = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(thumb)
             canvas.drawColor(android.graphics.Color.WHITE)
+            canvas.scale(scale, scale)
             state.layers.filter { it.isVisible }.forEach { layer ->
                 layerBitmaps[layer.id]?.let {
-                    val paint = Paint().apply { alpha = (layer.opacity * 255).toInt() }
+                    val paint = Paint().apply {
+                        alpha = (layer.opacity * 255).toInt()
+                        isFilterBitmap = true
+                    }
                     canvas.drawBitmap(it, 0f, 0f, paint)
                 }
             }

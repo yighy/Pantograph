@@ -242,7 +242,7 @@ fun ProjectCard(
                     tonalElevation = 2.dp
                 ) {
                     Text(
-                        text = "${project.width} × ${project.height}",
+                        text = "${project.width} \u00D7 ${project.height}",
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)

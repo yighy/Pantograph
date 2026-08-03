@@ -146,7 +146,7 @@ fun HSBSlidersView(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Column {
-            Text("Hue: ${hue.toInt()}°", style = MaterialTheme.typography.labelSmall)
+            Text("Hue: ${hue.toInt()}\u00B0", style = MaterialTheme.typography.labelSmall)
             HueSlider(hue = hue, onHueChange = { onValueChange(it, saturation, value) })
         }
         

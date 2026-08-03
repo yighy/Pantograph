@@ -182,7 +182,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
             item {
                 StudioSection(title = "Dynamics", icon = Icons.Rounded.Tune) {
                     DrawingSettingRow("Spacing", "${(uiState.brushSpacing * 100).toInt()}%", uiState.brushSpacing, { viewModel.setBrushSpacing(it) }, 0.01f..2f)
-                    DrawingSettingRow("Rotation", "${uiState.brushRotation.toInt()}°", uiState.brushRotation, { viewModel.setBrushRotation(it) }, 0f..360f)
+                    DrawingSettingRow("Rotation", "${uiState.brushRotation.toInt()}\u00B0", uiState.brushRotation, { viewModel.setBrushRotation(it) }, 0f..360f)
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -193,7 +193,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                     }
 
                     DrawingSettingRow("Size Jitter", "${(uiState.sizeJitter * 100).toInt()}%", uiState.sizeJitter, { viewModel.setSizeJitter(it) }, 0f..1f)
-                    DrawingSettingRow("Rotation Jitter", "${uiState.brushRotationJitter.toInt()}°", uiState.brushRotationJitter, { viewModel.setRotationJitter(it) }, 0f..180f)
+                    DrawingSettingRow("Rotation Jitter", "${uiState.brushRotationJitter.toInt()}\u00B0", uiState.brushRotationJitter, { viewModel.setRotationJitter(it) }, 0f..180f)
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -233,7 +233,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         )
                     }
                     Text(
-                        "Tap to pick an image • Texture: white keeps paint, dark cuts it",
+                        "Tap to pick an image \u2022 Texture: white keeps paint, dark cuts it",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -421,7 +421,7 @@ fun BrushPresetCard(
                                     color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = "Size: ${brush.size.toInt()}px • Opacity: ${(brush.opacity*100).toInt()}% • Flow: ${(brush.flow*100).toInt()}%",
+                                    text = "Size: ${brush.size.toInt()}px \u2022 Opacity: ${(brush.opacity*100).toInt()}% \u2022 Flow: ${(brush.flow*100).toInt()}%",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
                                 )

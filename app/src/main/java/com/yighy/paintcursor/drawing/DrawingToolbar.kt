@@ -392,7 +392,7 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
             hasFloating -> {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     SettingRow("Scale", "${(floatingScale * 100).toInt()}%", floatingScale, { viewModel.setSelectionScale(it) }, 0.1f..3f)
-                    SettingRow("Rotation", "${floatingRotation.toInt()}°", floatingRotation, { viewModel.setSelectionRotation(it) }, -180f..180f)
+                    SettingRow("Rotation", "${floatingRotation.toInt()}\u00B0", floatingRotation, { viewModel.setSelectionRotation(it) }, -180f..180f)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { viewModel.commitSelection() },
