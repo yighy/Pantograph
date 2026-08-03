@@ -43,6 +43,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
 import com.yighy.paintcursor.data.LayerEntity
 import com.yighy.paintcursor.data.PreferenceManager
@@ -73,6 +76,17 @@ fun DrawingScreen(
 
     val layerImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { viewModel.importImageAsLayer(context, it.toString()) }
+    }
+
+    // Layer saves are write-behind (batched); flush when the app goes to background so a
+    // process kill can't lose the last strokes
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.flushPendingSaves()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     var offsetX by remember { mutableFloatStateOf(fabPos.first) }

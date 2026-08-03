@@ -11,8 +11,11 @@ import androidx.lifecycle.viewModelScope
 import com.yighy.paintcursor.data.LayerEntity
 import com.yighy.paintcursor.data.ProjectRepository
 import com.yighy.paintcursor.data.PreferenceManager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -35,7 +38,18 @@ class DrawingViewModel(
     private val layerBitmaps = mutableMapOf<Long, Bitmap>()
     private var strokeBitmap: Bitmap? = null
     private var strokeCanvas: Canvas? = null
-    private val historyManager = DrawingHistoryManager(context.cacheDir, repository, projectId, viewModelScope)
+
+    // Survives onCleared() (viewModelScope is already cancelled there), so the final flush of
+    // pending layer saves and the history cache cleanup actually run when leaving the screen.
+    private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Write-behind persistence: a full-canvas PNG encode + thumbnail per stroke starves the
+    // CPU during rapid strokes, so stale layers are batched and flushed at most every 1.5s.
+    // Concurrent set: mutated on Main normally, drained from persistScope during shutdown.
+    private val dirtyLayerIds: MutableSet<Long> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    private var layerSaveJob: Job? = null
+
+    private val historyManager = DrawingHistoryManager(context.cacheDir, repository, projectId, persistScope)
     private val customBrushManager = CustomBrushManager(repository)
 
     private var smoothedVelocity = Offset.Zero
@@ -767,7 +781,7 @@ class DrawingViewModel(
 
             smoothedVelocity = Offset.Zero
             _uiState.update { it.copy(isPenDown = false, currentPath = null) }
-            saveLayerToFile(state.activeLayerId)
+            scheduleLayerSave(state.activeLayerId)
             updateProjectTimestamp()
         }
     }
@@ -1311,7 +1325,7 @@ class DrawingViewModel(
             
             withContext(Dispatchers.Main) {
                 _uiState.update { it.copy(renderVersion = it.renderVersion + 1) }
-                saveLayerToFile(activeId)
+                scheduleLayerSave(activeId)
                 updateProjectTimestamp()
             }
         }
@@ -1485,9 +1499,10 @@ class DrawingViewModel(
             canRedo = historyManager.hasRedo
         ) }
 
-        // Re-save only the layers this restore actually touched
+        // Re-save only the layers this restore actually touched, batched so undo spam
+        // doesn't rewrite a full PNG per step
         history.snapshots.keys.forEach { id ->
-            layerBitmaps[id]?.let { saveLayerToFileAsync(id, it) }
+            if (id in layerBitmaps) scheduleLayerSave(id)
         }
         updateProjectTimestamp()
     }
@@ -1505,6 +1520,43 @@ class DrawingViewModel(
         }
     }
 
+    /** Marks [layerId]'s on-disk PNG as stale and arms a batched flush (at most one per 1.5s). */
+    private fun scheduleLayerSave(layerId: Long) {
+        dirtyLayerIds.add(layerId)
+        if (layerSaveJob?.isActive != true) {
+            layerSaveJob = viewModelScope.launch {
+                // Loop: a stroke landing while a flush is writing must not wait forever
+                while (dirtyLayerIds.isNotEmpty()) {
+                    delay(1500)
+                    flushPendingLayerSaves()
+                }
+            }
+        }
+    }
+
+    /**
+     * Writes every stale layer PNG once, then refreshes the project thumbnail once. Ids are
+     * unmarked only after their write completes, so a cancellation mid-flush leaves the
+     * unwritten ones dirty for the next flush instead of losing them.
+     */
+    private suspend fun flushPendingLayerSaves() {
+        if (dirtyLayerIds.isEmpty()) return
+        dirtyLayerIds.toList().forEach { id ->
+            layerBitmaps[id]?.let { saveLayerToFileAsync(id, it) }
+            dirtyLayerIds.remove(id)
+        }
+        generateThumbnailNow(_uiState.value)
+    }
+
+    /** Immediate flush on [persistScope]: safe to call from onCleared() or a lifecycle ON_STOP. */
+    fun flushPendingSaves() {
+        val throttled = layerSaveJob
+        persistScope.launch {
+            throttled?.cancelAndJoin()
+            flushPendingLayerSaves()
+        }
+    }
+
     private fun saveLayerToFile(layerId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             val bitmap = layerBitmaps[layerId] ?: return@launch
@@ -1519,8 +1571,12 @@ class DrawingViewModel(
     }
 
     private fun generateThumbnail(state: DrawingState) {
-        viewModelScope.launch(Dispatchers.Default) {
-            if (state.canvasWidth <= 0 || state.canvasHeight <= 0) return@launch
+        viewModelScope.launch { generateThumbnailNow(state) }
+    }
+
+    private suspend fun generateThumbnailNow(state: DrawingState) {
+        if (state.canvasWidth <= 0 || state.canvasHeight <= 0) return
+        withContext(Dispatchers.Default) {
             val thumb = Bitmap.createBitmap(state.canvasWidth, state.canvasHeight, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(thumb)
             canvas.drawColor(android.graphics.Color.WHITE)
@@ -2122,5 +2178,8 @@ class DrawingViewModel(
 
     override fun onCleared() {
         historyManager.clearAll()
+        // viewModelScope is already cancelled here; the flush runs on persistScope so the
+        // last strokes aren't lost when leaving the screen
+        flushPendingSaves()
     }
 }
