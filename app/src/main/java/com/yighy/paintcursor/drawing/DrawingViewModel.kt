@@ -1550,10 +1550,13 @@ class DrawingViewModel(
 
     /** Immediate flush on [persistScope]: safe to call from onCleared() or a lifecycle ON_STOP. */
     fun flushPendingSaves() {
-        val throttled = layerSaveJob
+        val throttledSaves = layerSaveJob
+        val throttledMeta = projectMetaJob
         persistScope.launch {
-            throttled?.cancelAndJoin()
+            throttledSaves?.cancelAndJoin()
+            throttledMeta?.cancelAndJoin()
             flushPendingLayerSaves()
+            flushProjectMeta()
         }
     }
 
@@ -1592,11 +1595,28 @@ class DrawingViewModel(
         }
     }
 
+    // Same write-behind pattern as scheduleLayerSave: the timestamp + brush-settings rows
+    // were rewritten on every stroke; now at most once per second, flushed with the layers.
+    @Volatile private var projectMetaDirty = false
+    private var projectMetaJob: Job? = null
+
     private fun updateProjectTimestamp() {
-        viewModelScope.launch {
-            repository.updateProjectTimestamp(projectId)
-            saveProjectBrushSettings()
+        projectMetaDirty = true
+        if (projectMetaJob?.isActive != true) {
+            projectMetaJob = viewModelScope.launch {
+                while (projectMetaDirty) {
+                    delay(1000)
+                    flushProjectMeta()
+                }
+            }
         }
+    }
+
+    private suspend fun flushProjectMeta() {
+        if (!projectMetaDirty) return
+        projectMetaDirty = false
+        repository.updateProjectTimestamp(projectId)
+        saveProjectBrushSettings()
     }
 
     suspend fun saveProjectBrushSettings() {

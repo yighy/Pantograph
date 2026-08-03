@@ -238,7 +238,16 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                 val sb = strokeBitmap
                 val liveStroke = isActiveLayer && isPenDown && !isEraser && !isSelection && sb != null
 
-                if (liveStroke && sb != null) {
+                if (liveStroke && sb != null &&
+                    layer.opacity >= 1f && brushOpacity >= 1f &&
+                    brushTextureMask == null && selectionMask == null
+                ) {
+                    // Fast path for the common case (everything fully opaque, no masks):
+                    // direct draws are pixel-identical to the saveLayer composition below
+                    // and skip two full-screen offscreen buffers per frame
+                    layerBitmaps[layer.id]?.let { drawImage(it.asImageBitmap()) }
+                    drawImage(sb.asImageBitmap())
+                } else if (liveStroke && sb != null) {
                     // Live stroke: compose the stroke INTO the layer content first, then
                     // apply the layer opacity to the whole. This is the exact same math
                     // as commitStrokeToLayer + normal display, so nothing shifts at
