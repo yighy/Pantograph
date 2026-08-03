@@ -69,6 +69,11 @@ class DrawingViewModel(
     private var cachedStampBitmap: Bitmap? = null
     private var lastStampKey: String = ""
 
+    // Bounding box (canvas coords) of every stamp drawn into strokeBitmap since its last
+    // erase. Bounds the history snapshot at commit so undo only stores the touched region.
+    private val strokeDirtyRect = RectF()
+    private var strokeDirtyValid = false
+
     init {
         loadProject()
         observeSettings()
@@ -378,6 +383,7 @@ class DrawingViewModel(
                     
                     // Update stroke bitmap for real-time accurate preview
                     strokeBitmap?.eraseColor(android.graphics.Color.TRANSPARENT)
+                    strokeDirtyValid = false
                     distanceSinceLastStamp = max(1f, currentState.selectedWidth * currentState.brushSpacing)
                     drawStampStroke(start, newBrushPosition, currentState, seed = 0L)
 
@@ -573,6 +579,17 @@ class DrawingViewModel(
                 canvas.drawBitmap(stamp, null, stampRect, sharedPaint)
 
                 canvas.restore()
+
+                if (targetCanvas == null) {
+                    // 1.45 > sqrt(2): bounding radius of the stamp square under any rotation
+                    val reach = halfSize * 1.45f
+                    if (strokeDirtyValid) {
+                        strokeDirtyRect.union(sx - reach, sy - reach, sx + reach, sy + reach)
+                    } else {
+                        strokeDirtyRect.set(sx - reach, sy - reach, sx + reach, sy + reach)
+                        strokeDirtyValid = true
+                    }
+                }
                 currentPosInSegment += step
             }
             distanceSinceLastStamp = dist - (currentPosInSegment - step)
@@ -689,7 +706,8 @@ class DrawingViewModel(
 
         if (state.drawingMode is DrawingMode.BucketFill) {
             if (down) {
-                saveHistoryState(setOf(state.activeLayerId))
+                // Flood fill mutates scattered pixels, so the whole layer is frozen
+                saveHistoryState(mapOf(state.activeLayerId to SnapshotSpec.FullMutated))
                 updateColorHistory(state.selectedColor)
                 performFloodFill(state.brushPosition, state.selectedColor.copy(alpha = state.brushOpacity))
             }
@@ -699,10 +717,11 @@ class DrawingViewModel(
         if (state.isPenDown == down) return
 
         if (down) {
-            // Start of stroke
+            // Start of stroke. History is saved at pen-up (commit time), once the stroke's
+            // bounding box is known, so only the touched region gets snapshotted.
             strokeBitmap?.eraseColor(android.graphics.Color.TRANSPARENT)
+            strokeDirtyValid = false
 
-            saveHistoryState(setOf(state.activeLayerId))
             updateColorHistory(state.selectedColor)
             distanceSinceLastStamp = max(1f, state.selectedWidth * state.brushSpacing)
             currentStrokeDistance = 0f
@@ -739,7 +758,11 @@ class DrawingViewModel(
             if (state.drawingMode is DrawingMode.StraightLine || state.drawingMode is DrawingMode.StraightLineEraser) {
                 commitCurrentPath()
             }
-            
+
+            // Exactly one history entry per completed stroke, pushed before the layer is
+            // mutated so it freezes the pre-stroke pixels of just the stroke's bounding box.
+            // Pushed even for an empty stroke: abortCurrentStroke() pops unconditionally.
+            saveHistoryState(strokeSnapshotSpec(_uiState.value))
             commitStrokeToLayer()
 
             smoothedVelocity = Offset.Zero
@@ -747,6 +770,23 @@ class DrawingViewModel(
             saveLayerToFile(state.activeLayerId)
             updateProjectTimestamp()
         }
+    }
+
+    /**
+     * Snapshot spec for the stroke about to be committed: the active layer cropped to the
+     * stroke's dirty rect. Gradient paints the whole canvas, so it snapshots the full layer.
+     */
+    private fun strokeSnapshotSpec(state: DrawingState): Map<Long, SnapshotSpec> {
+        val layerBitmap = layerBitmaps[state.activeLayerId] ?: return emptyMap()
+        if (state.drawingMode is DrawingMode.Gradient) {
+            return mapOf(state.activeLayerId to SnapshotSpec.FullMutated)
+        }
+        if (!strokeDirtyValid) return emptyMap()
+        val r = Rect()
+        strokeDirtyRect.roundOut(r)
+        r.inset(-2, -2) // antialiasing/filtering bleed margin
+        if (!r.intersect(0, 0, layerBitmap.width, layerBitmap.height)) return emptyMap()
+        return mapOf(state.activeLayerId to SnapshotSpec.Region(r))
     }
 
     private fun commitStrokeToLayer() {
@@ -1001,7 +1041,8 @@ class DrawingViewModel(
         canvas.drawBitmap(mask, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN) })
 
         if (cut) {
-            saveHistoryState(setOf(state.activeLayerId))
+            // Full layer: this one entry must also cover the later paste, which can land anywhere
+            saveHistoryState(mapOf(state.activeLayerId to SnapshotSpec.FullMutated))
             Canvas(layerBitmap).drawBitmap(mask, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
         }
         floatingFromCut = cut
@@ -1034,7 +1075,7 @@ class DrawingViewModel(
         if (!state.isSelectionClosed) return
         val mask = state.selectionMask ?: return
         val layerBitmap = layerBitmaps[state.activeLayerId] ?: return
-        saveHistoryState(setOf(state.activeLayerId))
+        saveHistoryState(mapOf(state.activeLayerId to SnapshotSpec.FullMutated))
         Canvas(layerBitmap).drawBitmap(mask, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
         clearSelection()
         saveLayerToFile(state.activeLayerId)
@@ -1093,7 +1134,7 @@ class DrawingViewModel(
     private fun commitImportedLayer(state: DrawingState, floatBitmap: Bitmap) {
         pendingImport = false
         viewModelScope.launch {
-            saveHistoryState(emptySet()) // a brand-new layer is added; existing bitmaps stay untouched
+            saveHistoryState(emptyMap()) // a brand-new layer is added; existing bitmaps stay untouched
             val zIndex = (_uiState.value.layers.maxOfOrNull { it.zIndex } ?: 0) + 1
             val newLayerId = repository.insertLayer(LayerEntity(projectId = projectId, name = "Imported Image", zIndex = zIndex))
 
@@ -1122,6 +1163,24 @@ class DrawingViewModel(
         }
     }
 
+    /**
+     * Canvas-space bounding box of the floating bitmap under its current translate/rotate/scale
+     * transform (mirrors the Canvas ops in [commitSelection]), padded for filtering bleed.
+     */
+    private fun floatingPasteBounds(state: DrawingState, floatBitmap: Bitmap): Rect {
+        val m = Matrix()
+        m.setTranslate(state.floatingOffset.x + floatBitmap.width / 2f, state.floatingOffset.y + floatBitmap.height / 2f)
+        m.preRotate(state.floatingRotation)
+        m.preScale(state.floatingScale, state.floatingScale)
+        m.preTranslate(-floatBitmap.width / 2f, -floatBitmap.height / 2f)
+        val mapped = RectF(0f, 0f, floatBitmap.width.toFloat(), floatBitmap.height.toFloat())
+        m.mapRect(mapped)
+        val out = Rect()
+        mapped.roundOut(out)
+        out.inset(-2, -2)
+        return out
+    }
+
     /** Draws the floating selection back onto the active layer with its current transform. */
     fun commitSelection() {
         val state = _uiState.value
@@ -1132,8 +1191,12 @@ class DrawingViewModel(
         }
         val layerBitmap = layerBitmaps[state.activeLayerId]
         if (layerBitmap != null) {
-            // A cut already saved history at lift time, so the whole move undoes as one step
-            if (!floatingFromCut) saveHistoryState(setOf(state.activeLayerId))
+            // A cut already saved history at lift time, so the whole move undoes as one step.
+            // A duplicate only paints inside the transformed floating rect - snapshot just that.
+            if (!floatingFromCut) {
+                val bounds = floatingPasteBounds(state, floatBitmap)
+                saveHistoryState(mapOf(state.activeLayerId to SnapshotSpec.Region(bounds)))
+            }
             val canvas = Canvas(layerBitmap)
             canvas.save()
             canvas.translate(state.floatingOffset.x + floatBitmap.width / 2f, state.floatingOffset.y + floatBitmap.height / 2f)
@@ -1226,6 +1289,7 @@ class DrawingViewModel(
 
         // Ensure the stroke is drawn into the temporary bitmap
         strokeBitmap?.eraseColor(android.graphics.Color.TRANSPARENT)
+        strokeDirtyValid = false
         drawStampStroke(path.points.first(), path.points.last(), state, seed = 0L)
 
         _uiState.update { it.copy(renderVersion = it.renderVersion + 1) }
@@ -1315,16 +1379,30 @@ class DrawingViewModel(
     }
 
     /**
-     * @param mutatedLayerIds Layers whose bitmap object is about to be drawn into in place
-     * (e.g. the active layer during a stroke). Only these need an immediate deep copy; see
-     * [DrawingHistoryManager.saveState]. Defaults to all layers for callers that don't know
-     * which ones will change.
+     * Pushes one undo entry. [specs] lists, per layer, which pixels the upcoming operation
+     * will overwrite or remove (see [SnapshotSpec]); metadata-only operations pass an empty
+     * map. Must be called before the operation mutates the layer bitmaps.
      */
-    private fun saveHistoryState(mutatedLayerIds: Set<Long> = layerBitmaps.keys) {
+    private fun saveHistoryState(specs: Map<Long, SnapshotSpec>) {
         val state = _uiState.value
         if (state.projectId == -1L) return
-        historyManager.saveState(layerBitmaps, state.layers, state.activeLayerId, state.historyLimit, mutatedLayerIds)
+        historyManager.saveState(layerBitmaps, state.layers, state.activeLayerId, state.historyLimit, specs)
         _uiState.update { it.copy(canUndo = true, canRedo = false) }
+    }
+
+    /**
+     * Serializes undo/redo/abort: each operation waits for the previous restore to complete,
+     * so the inverse entry is always captured from a fully applied state (region deltas pasted
+     * out of order would corrupt pixels, not just skip a step).
+     */
+    private var historyJob: Job? = null
+
+    private fun launchHistoryOp(block: suspend () -> Unit) {
+        val previous = historyJob
+        historyJob = viewModelScope.launch(Dispatchers.Main) {
+            previous?.join()
+            block()
+        }
     }
 
     /**
@@ -1332,55 +1410,86 @@ class DrawingViewModel(
      * Silently removes the last history state and restores bitmaps.
      */
     fun abortCurrentStroke() {
-        val lastState = historyManager.popUndo() ?: return
-        applyHistoryState(lastState)
-        _uiState.update { it.copy(canUndo = historyManager.hasUndo) }
+        launchHistoryOp {
+            val lastState = historyManager.popUndo() ?: return@launchHistoryOp
+            applyHistoryState(lastState)
+            _uiState.update { it.copy(canUndo = historyManager.hasUndo) }
+        }
     }
 
     fun undo() {
-        val current = _uiState.value
         // Undo while a selection is floating cancels the move; a closed selection is kept
         // (it's a drawing mask now) and undo applies to strokes as usual
-        if (current.floatingBitmap != null) { cancelSelection(); return }
-        val prevState = historyManager.popUndo() ?: return
-        val state = _uiState.value
-        historyManager.pushToRedo(layerBitmaps, state.layers, state.activeLayerId)
-        applyHistoryState(prevState)
+        if (_uiState.value.floatingBitmap != null) { cancelSelection(); return }
+        launchHistoryOp {
+            val prevState = historyManager.popUndo() ?: return@launchHistoryOp
+            val state = _uiState.value
+            historyManager.pushToRedo(
+                historyManager.captureInverse(layerBitmaps, state.layers, state.activeLayerId, prevState)
+            )
+            applyHistoryState(prevState)
+        }
     }
 
     fun redo() {
         if (_uiState.value.floatingBitmap != null) { cancelSelection(); return }
-        val nextState = historyManager.popRedo() ?: return
-        val state = _uiState.value
-        historyManager.pushToUndo(layerBitmaps, state.layers, state.activeLayerId)
-        applyHistoryState(nextState)
+        launchHistoryOp {
+            val nextState = historyManager.popRedo() ?: return@launchHistoryOp
+            val state = _uiState.value
+            historyManager.pushToUndo(
+                historyManager.captureInverse(layerBitmaps, state.layers, state.activeLayerId, nextState)
+            )
+            applyHistoryState(nextState)
+        }
     }
 
-    private fun applyHistoryState(history: HistoryState) {
-        viewModelScope.launch(Dispatchers.Main) {
-            // If we failed to get ANY bitmap, don't apply the state to avoid erasing the canvas
-            val newLayerBitmaps = historyManager.restoreBitmaps(history) ?: return@launch
+    private suspend fun applyHistoryState(history: HistoryState) {
+        // If any snapshot is unrecoverable, leave the canvas untouched rather than corrupting it
+        val restored = historyManager.restoreBitmaps(history) ?: return
 
-            historyManager.syncLayersWithDatabase(history)
+        historyManager.syncLayersWithDatabase(history)
 
-            layerBitmaps.clear()
-            layerBitmaps.putAll(newLayerBitmaps)
+        // Drop layers this state doesn't have (reverts an add/duplicate/import)
+        val targetIds = history.layersMetadata.map { it.id }.toSet()
+        layerBitmaps.keys.retainAll(targetIds)
 
-            // Trigger a re-save of the restored bitmaps to their permanent files
-            newLayerBitmaps.forEach { (id, bitmap) ->
-                saveLayerToFileAsync(id, bitmap)
+        val restorePaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
+        history.snapshots.forEach { (layerId, snap) ->
+            val pixels = restored[layerId] ?: return@forEach
+            val existing = layerBitmaps[layerId]
+            if (existing == null) {
+                // The reverted operation removed this layer; bring its full bitmap back
+                if (snap.isFullLayer && layerId in targetIds) layerBitmaps[layerId] = pixels
+            } else {
+                // Replace exactly the frozen region, transparent pixels included
+                Canvas(existing).drawBitmap(pixels, snap.left.toFloat(), snap.top.toFloat(), restorePaint)
             }
-
-            _uiState.update { it.copy(
-                layers = history.layersMetadata,
-                activeLayerId = history.activeLayerId,
-                layerBitmaps = layerBitmaps.toMap(),
-                renderVersion = it.renderVersion + 1,
-                canUndo = historyManager.hasUndo,
-                canRedo = historyManager.hasRedo
-            ) }
-            updateProjectTimestamp()
         }
+
+        // Safety net: a layer present in metadata but without pixels gets a blank bitmap
+        val st = _uiState.value
+        if (st.canvasWidth > 0 && st.canvasHeight > 0) {
+            history.layersMetadata.forEach { meta ->
+                if (meta.id !in layerBitmaps) {
+                    layerBitmaps[meta.id] = Bitmap.createBitmap(st.canvasWidth, st.canvasHeight, Bitmap.Config.ARGB_8888)
+                }
+            }
+        }
+
+        _uiState.update { it.copy(
+            layers = history.layersMetadata,
+            activeLayerId = history.activeLayerId,
+            layerBitmaps = layerBitmaps.toMap(),
+            renderVersion = it.renderVersion + 1,
+            canUndo = historyManager.hasUndo,
+            canRedo = historyManager.hasRedo
+        ) }
+
+        // Re-save only the layers this restore actually touched
+        history.snapshots.keys.forEach { id ->
+            layerBitmaps[id]?.let { saveLayerToFileAsync(id, it) }
+        }
+        updateProjectTimestamp()
     }
 
     private suspend fun saveLayerToFileAsync(layerId: Long, bitmap: Bitmap) {
@@ -1683,7 +1792,7 @@ class DrawingViewModel(
     fun setCursorSensitivity(s: Float) = updateBrushSetting { it.copy(cursorSensitivity = s.coerceIn(0.1f, 1.0f)) }
 
     fun addLayer(name: String) {
-        saveHistoryState(emptySet()) // adding a layer doesn't mutate any existing bitmap
+        saveHistoryState(emptyMap()) // adding a layer doesn't mutate any existing bitmap
         viewModelScope.launch {
             val zIndex = (_uiState.value.layers.maxOfOrNull { it.zIndex } ?: 0) + 1
             val newLayerId = repository.insertLayer(LayerEntity(projectId = projectId, name = name, zIndex = zIndex))
@@ -1695,7 +1804,8 @@ class DrawingViewModel(
 
     fun deleteLayer(layer: LayerEntity) {
         if (_uiState.value.layers.size <= 1) return
-        saveHistoryState(emptySet()) // deleting only removes a bitmap, doesn't mutate remaining ones
+        // The deleted layer's bitmap is kept by reference (never mutated) so undo can re-add it
+        saveHistoryState(mapOf(layer.id to SnapshotSpec.FullByRef))
         viewModelScope.launch {
             repository.deleteLayer(layer)
             layerBitmaps.remove(layer.id)
@@ -1704,7 +1814,7 @@ class DrawingViewModel(
     }
 
     fun toggleLayerVisibility(layer: LayerEntity) {
-        saveHistoryState(emptySet()) // only flips a metadata flag, no bitmap pixels change
+        saveHistoryState(emptyMap()) // only flips a metadata flag, no bitmap pixels change
         viewModelScope.launch {
             repository.updateLayer(layer.copy(isVisible = !layer.isVisible))
             updateProjectTimestamp()
@@ -1713,7 +1823,7 @@ class DrawingViewModel(
 
     fun renameLayer(layer: LayerEntity, newName: String) {
         if (newName.isBlank()) return
-        saveHistoryState(emptySet()) // renaming is metadata-only
+        saveHistoryState(emptyMap()) // renaming is metadata-only
         viewModelScope.launch {
             repository.updateLayer(layer.copy(name = newName))
             updateProjectTimestamp()
@@ -1739,7 +1849,7 @@ class DrawingViewModel(
     }
 
     fun duplicateLayer(layer: LayerEntity) {
-        saveHistoryState(emptySet()) // creates a new bitmap, doesn't mutate an existing one
+        saveHistoryState(emptyMap()) // creates a new bitmap, doesn't mutate an existing one
         viewModelScope.launch {
             val zIndex = (_uiState.value.layers.maxOfOrNull { it.zIndex } ?: 0) + 1
             val newLayerId = repository.insertLayer(LayerEntity(projectId = projectId, name = "${layer.name} Copy", zIndex = zIndex, opacity = layer.opacity))
@@ -1759,7 +1869,8 @@ class DrawingViewModel(
         if (index <= 0) return
         val targetLayer = layers[index - 1]
 
-        saveHistoryState(setOf(targetLayer.id)) // merge draws the source into the target bitmap in place
+        // Target is drawn into in place (full copy); source is removed untouched (by ref)
+        saveHistoryState(mapOf(targetLayer.id to SnapshotSpec.FullMutated, layer.id to SnapshotSpec.FullByRef))
         viewModelScope.launch {
             val sourceBitmap = layerBitmaps[layer.id] ?: return@launch
             val targetBitmap = layerBitmaps[targetLayer.id] ?: return@launch
@@ -1777,7 +1888,7 @@ class DrawingViewModel(
         val layers = _uiState.value.layers.toMutableList()
         if (fromIndex !in layers.indices || toIndex !in layers.indices) return
 
-        saveHistoryState(emptySet()) // reordering only changes z-index metadata
+        saveHistoryState(emptyMap()) // reordering only changes z-index metadata
         val item = layers.removeAt(fromIndex)
         layers.add(toIndex, item)
         viewModelScope.launch {
@@ -1787,7 +1898,7 @@ class DrawingViewModel(
     }
 
     fun clearLayer(id: Long) {
-        saveHistoryState(setOf(id)) // erased in place right below
+        saveHistoryState(mapOf(id to SnapshotSpec.FullMutated)) // erased in place right below
         layerBitmaps[id]?.eraseColor(android.graphics.Color.TRANSPARENT)
         _uiState.update { it.copy(renderVersion = it.renderVersion + 1) }
         saveLayerToFile(id)
