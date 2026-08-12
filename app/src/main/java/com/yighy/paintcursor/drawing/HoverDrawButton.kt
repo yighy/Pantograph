@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.yighy.paintcursor.ui.theme.MotionTokens
 import coil.compose.AsyncImage
 import com.yighy.paintcursor.data.LayerEntity
 import com.yighy.paintcursor.data.PreferenceManager
@@ -233,11 +234,11 @@ fun HoverDrawButton(
         )
         val brushGateBg by animateColorAsState(
             targetValue = if (brushGateActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
-            animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f)
+            animationSpec = MotionTokens.colorTransition
         )
         val brushGateIconTint by animateColorAsState(
             targetValue = if (brushGateActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
-            animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f)
+            animationSpec = MotionTokens.colorTransition
         )
 
         Box(
@@ -347,7 +348,7 @@ fun HoverDrawButton(
                 isEraserMode -> MaterialTheme.colorScheme.errorContainer
                 else -> MaterialTheme.colorScheme.secondaryContainer
             },
-            animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f)
+            animationSpec = MotionTokens.colorTransition
         )
         val modeGateIconTint by animateColorAsState(
             targetValue = when {
@@ -355,7 +356,7 @@ fun HoverDrawButton(
                 isEraserMode -> MaterialTheme.colorScheme.onErrorContainer
                 else -> MaterialTheme.colorScheme.onSecondaryContainer
             },
-            animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f)
+            animationSpec = MotionTokens.colorTransition
         )
 
         Box(
@@ -417,9 +418,9 @@ fun HoverDrawButton(
         // a real enter animation instead of just appearing already-visible on first show.
         AnimatedVisibility(
             visible = brushGateActive,
-            enter = scaleIn(spring(dampingRatio = 0.6f, stiffness = 380f), transformOrigin = TransformOrigin(0.5f, 0.5f)) +
+            enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
                 fadeIn(tween(120)),
-            exit = scaleOut(tween(120), transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
+            exit = scaleOut(MotionTokens.expressiveExit, transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
         ) {
             BrushGatePanel(
                 paramIndex = brushGateParam,
@@ -437,9 +438,9 @@ fun HoverDrawButton(
         }
         AnimatedVisibility(
             visible = modeGateActive,
-            enter = scaleIn(spring(dampingRatio = 0.6f, stiffness = 380f), transformOrigin = TransformOrigin(0.5f, 0.5f)) +
+            enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
                 fadeIn(tween(120)),
-            exit = scaleOut(tween(120), transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
+            exit = scaleOut(MotionTokens.expressiveExit, transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
         ) {
             ModeGatePanel(
                 hoveredCell = modeGateCell,
@@ -535,14 +536,14 @@ private fun BrushGatePanel(
                 val v = if (selected) value else currentValues[i]
                 val bubbleColor by animateColorAsState(
                     targetValue = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f)
+                    animationSpec = MotionTokens.colorTransition
                 )
                 AnimatedVisibility(
                     visible = bubbleVisible[i],
-                    enter = fadeIn(tween(160)) + scaleIn(tween(160), initialScale = 0.55f)
+                    enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f)
                 ) {
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = MaterialTheme.shapes.small,
                         color = bubbleColor,
                         shadowElevation = 4.dp,
                         tonalElevation = 2.dp
@@ -633,7 +634,7 @@ private fun ModeGateBubble(label: String, icon: ImageVector, hovered: Boolean, a
             active -> MaterialTheme.colorScheme.secondaryContainer
             else -> MaterialTheme.colorScheme.surfaceContainerHigh
         },
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f)
+        animationSpec = MotionTokens.colorTransition
     )
     val contentColor by animateColorAsState(
         targetValue = when {
@@ -641,11 +642,11 @@ private fun ModeGateBubble(label: String, icon: ImageVector, hovered: Boolean, a
             active -> MaterialTheme.colorScheme.onSecondaryContainer
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         },
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = 300f)
+        animationSpec = MotionTokens.colorTransition
     )
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(160)) + scaleIn(tween(160), initialScale = 0.55f)
+        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f)
     ) {
         Surface(
             shape = RoundedCornerShape(50),

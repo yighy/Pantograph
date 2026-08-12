@@ -315,12 +315,12 @@ fun FloatingLayersPanel(
                                 scaleY = scale
                             }
                             .size(50.dp)
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(MaterialTheme.shapes.extraSmall)
                             .background(Color.White)
                             .border(
                                 width = if (isActive) 2.dp else 0.5.dp,
-                                color = if (isActive) MaterialTheme.colorScheme.primary else Color.LightGray,
-                                shape = RoundedCornerShape(8.dp)
+                                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                shape = MaterialTheme.shapes.extraSmall
                             )
                             .pointerInput(layer.id, isActive) {
                                 detectTapGestures(

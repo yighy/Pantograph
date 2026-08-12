@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -204,8 +203,8 @@ fun FloatingReferenceImage(
         modifier = Modifier
             .offset { IntOffset(reference.offset.x.roundToInt(), reference.offset.y.roundToInt()) }
             .width(effectiveWidth)
-            .shadow(12.dp, RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(12.dp))
+            .shadow(12.dp, MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), MaterialTheme.shapes.medium)
             .onSizeChanged(onSizeChanged)
             .pointerInput(isEyeDropperActive) {
                 if (isEyeDropperActive) {
@@ -222,7 +221,7 @@ fun FloatingReferenceImage(
                     detectTransformGestures { _, pan, zoom, rotation -> onUpdate(pan, zoom, rotation) }
                 }
             }
-            .clip(RoundedCornerShape(12.dp))
+            .clip(MaterialTheme.shapes.medium)
     ) {
         Column {
             Row(

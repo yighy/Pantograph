@@ -535,7 +535,7 @@ fun PresetsListContent(viewModel: DrawingViewModel) {
                                 Icon(Icons.Rounded.Edit, null, tint = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                             }
                             IconButton(onClick = { brushToDelete = brush }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Rounded.Delete, null, tint = Color.Red.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
+                                Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
                             }
                         }
                     }

@@ -7,7 +7,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Colorize
 import androidx.compose.material.icons.rounded.LinearScale
@@ -98,9 +97,9 @@ fun HSBPickerView(
             Box(
                 modifier = Modifier
                     .size(width = 110.dp, height = 32.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(MaterialTheme.shapes.extraSmall)
                     .background(Color.hsv(hue, saturation, brightness))
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.extraSmall)
             )
             
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -183,7 +182,7 @@ fun SaturationValueBox(
         modifier = Modifier
             .aspectRatio(1f)
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
+            .clip(MaterialTheme.shapes.extraSmall)
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
                     val s = (offset.x / size.width).coerceIn(0f, 1f)

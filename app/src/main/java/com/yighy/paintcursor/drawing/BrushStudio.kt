@@ -119,7 +119,10 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            // Checkerboard Background
+                            // Checkerboard Background (transparency indicator, tinted from the
+                            // theme's neutral on-surface-variant tone so it stays visible and
+                            // correctly contrasted in both light and dark theme)
+                            val checkerColor = MaterialTheme.colorScheme.onSurfaceVariant
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 val squareSize = 12.dp.toPx()
                                 val cols = (size.width / squareSize).toInt() + 1
@@ -128,7 +131,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                                     for (j in 0 until rows) {
                                         if ((i + j) % 2 == 0) {
                                             drawRect(
-                                                color = Color.Gray.copy(alpha = 0.08f),
+                                                color = checkerColor.copy(alpha = 0.08f),
                                                 topLeft = Offset(i * squareSize, j * squareSize),
                                                 size = androidx.compose.ui.geometry.Size(squareSize, squareSize)
                                             )
