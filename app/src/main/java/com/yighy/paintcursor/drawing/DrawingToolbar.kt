@@ -1,8 +1,6 @@
 package com.yighy.paintcursor.drawing
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -33,8 +31,8 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.yighy.paintcursor.ui.theme.MotionTokens
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
@@ -81,21 +79,16 @@ fun DrawingToolbar(
         showPresetsList = activePanel == ToolbarPanel.Brush
     }
 
-    val toolbarAnimSpec = remember { 
-        spring<IntSize>(
-            dampingRatio = Spring.DampingRatioLowBouncy,
-            stiffness = Spring.StiffnessLow
-        ) 
-    }
-    val visibilityAnimSpecEnter = remember { 
+    val toolbarAnimSpec = remember { MotionTokens.panelTransition }
+    val visibilityAnimSpecEnter = remember {
         expandVertically(
-            animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow)
-        ) + fadeIn(animationSpec = tween(300)) 
+            animationSpec = MotionTokens.panelTransition
+        ) + fadeIn(animationSpec = tween(300))
     }
-    val visibilityAnimSpecExit = remember { 
+    val visibilityAnimSpecExit = remember {
         shrinkVertically(
-            animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium)
-        ) + fadeOut(animationSpec = tween(200)) 
+            animationSpec = MotionTokens.panelTransition
+        ) + fadeOut(animationSpec = tween(200))
     }
 
     Surface(

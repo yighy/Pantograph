@@ -400,10 +400,10 @@ fun FloatingLayersPanel(
 
                         if (!layer.isVisible) {
                             Box(
-                                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)),
+                                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.5f)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.VisibilityOff, null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Icon(Icons.Default.VisibilityOff, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.inverseOnSurface)
                             }
                         }
                     }

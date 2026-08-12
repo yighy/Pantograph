@@ -4,7 +4,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.*
@@ -80,7 +79,7 @@ fun HoverDrawButton(
 
     val scale by animateFloatAsState(
         targetValue = if (isPenDown) 1.15f else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 400f)
+        animationSpec = MotionTokens.pulse
     )
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -230,7 +229,7 @@ fun HoverDrawButton(
         // colors ease across instead of snapping, matching the FAB's own pen-down spring
         val brushGateScale by animateFloatAsState(
             targetValue = if (brushGateActive) 1.08f else 1f,
-            animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f)
+            animationSpec = MotionTokens.pulse
         )
         val brushGateBg by animateColorAsState(
             targetValue = if (brushGateActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
@@ -340,7 +339,7 @@ fun HoverDrawButton(
 
         val modeGateScale by animateFloatAsState(
             targetValue = if (modeGateActive) 1.08f else 1f,
-            animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f)
+            animationSpec = MotionTokens.pulse
         )
         val modeGateBg by animateColorAsState(
             targetValue = when {

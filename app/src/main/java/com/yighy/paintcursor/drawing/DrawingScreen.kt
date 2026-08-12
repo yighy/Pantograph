@@ -47,6 +47,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import coil.compose.AsyncImage
+import com.yighy.paintcursor.ui.theme.MotionTokens
 import com.yighy.paintcursor.data.LayerEntity
 import com.yighy.paintcursor.data.PreferenceManager
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -173,8 +174,8 @@ fun DrawingScreen(
             // Slide only (no fade): keeps the elevation shadow alive during the animation
             AnimatedVisibility(
                 visible = editingLayerId != null,
-                enter = slideInHorizontally(initialOffsetX = { it }),
-                exit = slideOutHorizontally(targetOffsetX = { it })
+                enter = slideInHorizontally(animationSpec = MotionTokens.slideEnter, initialOffsetX = { it }),
+                exit = slideOutHorizontally(animationSpec = MotionTokens.slideExit, targetOffsetX = { it })
             ) {
                 // Invisible scrim: a tap anywhere outside the panel dismisses it
                 Box(
@@ -355,8 +356,8 @@ fun LayersAndActionsSection(
         // shadow), so sliding by its own width alone leaves a sliver that then vanishes.
         AnimatedVisibility(
             visible = showLayersPanel,
-            enter = slideInHorizontally(initialOffsetX = { it * 2 }),
-            exit = slideOutHorizontally(targetOffsetX = { it * 2 })
+            enter = slideInHorizontally(animationSpec = MotionTokens.slideEnter, initialOffsetX = { it * 2 }),
+            exit = slideOutHorizontally(animationSpec = MotionTokens.slideExit, targetOffsetX = { it * 2 })
         ) {
             FloatingLayersPanel(
                 layers = layers,

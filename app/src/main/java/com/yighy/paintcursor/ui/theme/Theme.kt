@@ -32,6 +32,17 @@ private val LightColorScheme = lightColorScheme(
     onSurface = OnSurfaceLight,
     surfaceVariant = SurfaceVariantLight,
     onSurfaceVariant = OnSurfaceVariantLight,
+    surfaceDim = SurfaceDimLight,
+    surfaceBright = SurfaceBrightLight,
+    surfaceContainerLowest = SurfaceContainerLowestLight,
+    surfaceContainerLow = SurfaceContainerLowLight,
+    surfaceContainer = SurfaceContainerLight,
+    surfaceContainerHigh = SurfaceContainerHighLight,
+    surfaceContainerHighest = SurfaceContainerHighestLight,
+    outline = OutlineLight,
+    outlineVariant = OutlineVariantLight,
+    inverseSurface = InverseSurfaceLight,
+    inverseOnSurface = InverseOnSurfaceLight,
 )
 
 private val DarkColorScheme = darkColorScheme(
@@ -57,18 +68,30 @@ private val DarkColorScheme = darkColorScheme(
     onSurface = OnSurfaceDark,
     surfaceVariant = SurfaceVariantDark,
     onSurfaceVariant = OnSurfaceVariantDark,
+    surfaceDim = SurfaceDimDark,
+    surfaceBright = SurfaceBrightDark,
+    surfaceContainerLowest = SurfaceContainerLowestDark,
+    surfaceContainerLow = SurfaceContainerLowDark,
+    surfaceContainer = SurfaceContainerDark,
+    surfaceContainerHigh = SurfaceContainerHighDark,
+    surfaceContainerHighest = SurfaceContainerHighestDark,
+    outline = OutlineDark,
+    outlineVariant = OutlineVariantDark,
+    inverseSurface = InverseSurfaceDark,
+    inverseOnSurface = InverseOnSurfaceDark,
 )
 
 /**
- * Material 3 Expressive Shapes
- * Expressive design emphasizes larger corner radii for containers.
+ * Material 3 Expressive Shapes — "Studio Dark"
+ * Tighter, denser corner radii than a consumer-playful scale: still clearly rounder than
+ * stock M3 defaults (4/8/12/16/28dp), but reads as a precision tool, not a toy.
  */
 val ExpressiveShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(16.dp),
-    medium = RoundedCornerShape(24.dp),
-    large = RoundedCornerShape(32.dp),
-    extraLarge = RoundedCornerShape(48.dp)
+    extraSmall = RoundedCornerShape(6.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp)
 )
 
 @Composable

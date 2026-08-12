@@ -114,7 +114,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(120.dp),
-                        shape = MaterialTheme.shapes.extraLarge,
+                        shape = MaterialTheme.shapes.medium,
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     ) {
@@ -380,7 +380,7 @@ fun StudioSection(title: String, icon: androidx.compose.ui.graphics.vector.Image
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
         }
         Surface(
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))

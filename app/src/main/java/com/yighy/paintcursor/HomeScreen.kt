@@ -1,5 +1,9 @@
 package com.yighy.paintcursor
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -24,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.yighy.paintcursor.data.PreferenceManager
 import com.yighy.paintcursor.data.ProjectEntity
+import com.yighy.paintcursor.ui.theme.MotionTokens
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -118,13 +123,20 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(projects) { project ->
-                        ProjectCard(
-                            project = project,
-                            onClick = { onNavigateToProject(project.id) },
-                            onDelete = { projectToDelete = project },
-                            onRename = { projectToRename = project }
-                        )
+                    items(projects, key = { it.id }) { project ->
+                        val visibleState = remember { MutableTransitionState(false).apply { targetState = true } }
+                        androidx.compose.animation.AnimatedVisibility(
+                            visibleState = visibleState,
+                            enter = fadeIn(MotionTokens.expressiveEnter) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.9f),
+                            modifier = Modifier.animateItem()
+                        ) {
+                            ProjectCard(
+                                project = project,
+                                onClick = { onNavigateToProject(project.id) },
+                                onDelete = { projectToDelete = project },
+                                onRename = { projectToRename = project }
+                            )
+                        }
                     }
                 }
             }
@@ -206,14 +218,13 @@ fun ProjectCard(
     val lastModified = remember(project.updatedAt) { dateFormatter.format(Date(project.updatedAt)) }
     var showMenu by remember { mutableStateOf(false) }
 
-    ElevatedCard(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(0.85f)
             .clickable { onClick() },
         shape = MaterialTheme.shapes.medium,
-        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
     ) {
         Column {
             // Thumbnail Area
