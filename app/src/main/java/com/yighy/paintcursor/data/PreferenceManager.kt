@@ -36,6 +36,7 @@ class PreferenceManager(private val context: Context) {
         val VELOCITY_SCATTER_KEY = floatPreferencesKey("velocity_scatter")
         val VELOCITY_ENABLED_KEY = booleanPreferencesKey("velocity_enabled")
         val OFFSCREEN_CURSOR_ARROW_KEY = booleanPreferencesKey("offscreen_cursor_arrow")
+        val SATELLITE_GATE_SENSITIVITY_KEY = floatPreferencesKey("satellite_gate_sensitivity")
     }
 
     val appTheme: Flow<AppTheme> = context.dataStore.data.map { preferences ->
@@ -119,6 +120,10 @@ class PreferenceManager(private val context: Context) {
 
     val offscreenCursorArrow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[OFFSCREEN_CURSOR_ARROW_KEY] ?: true
+    }
+
+    val satelliteGateSensitivity: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[SATELLITE_GATE_SENSITIVITY_KEY] ?: 1f
     }
 
     suspend fun setAppTheme(theme: AppTheme) {
@@ -239,6 +244,12 @@ class PreferenceManager(private val context: Context) {
     suspend fun setOffscreenCursorArrow(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[OFFSCREEN_CURSOR_ARROW_KEY] = enabled
+        }
+    }
+
+    suspend fun setSatelliteGateSensitivity(sensitivity: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[SATELLITE_GATE_SENSITIVITY_KEY] = sensitivity
         }
     }
 }

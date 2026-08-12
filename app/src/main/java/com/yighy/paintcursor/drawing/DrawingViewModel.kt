@@ -102,6 +102,10 @@ class DrawingViewModel(
             .onEach { threshold -> _uiState.update { it.copy(fabDragThreshold = threshold) } }
             .launchIn(viewModelScope)
 
+        preferenceManager.satelliteGateSensitivity
+            .onEach { sensitivity -> _uiState.update { it.copy(satelliteGateSensitivity = sensitivity) } }
+            .launchIn(viewModelScope)
+
         preferenceManager.colorHistory
             .onEach { history -> 
                 val colors = history.mapNotNull { 

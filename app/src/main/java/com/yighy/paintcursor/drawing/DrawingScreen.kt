@@ -252,6 +252,8 @@ fun LayersAndActionsSection(
     val activeLayerId by remember(viewModel) { viewModel.uiState.map { it.activeLayerId }.distinctUntilChanged() }.collectAsState(-1L)
     val layerBitmaps by remember(viewModel) { viewModel.uiState.map { it.layerBitmaps }.distinctUntilChanged() }.collectAsState(emptyMap())
     val renderVersion by remember(viewModel) { viewModel.uiState.map { it.renderVersion }.distinctUntilChanged() }.collectAsState(0)
+    val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
+    val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
 
     Column(
         horizontalAlignment = Alignment.End,
@@ -269,9 +271,10 @@ fun LayersAndActionsSection(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { viewModel.requestFitToScreen() }) {
-                    Icon(Icons.Rounded.Fullscreen, contentDescription = "Fit to Screen")
-                }
+                // Extra-tools gate (moved from the bottom toolbar to free up its space) with
+                // Fit-to-Screen folded in as a menu item, taking the slot the standalone
+                // Fullscreen button used to occupy
+                ToolsMenuButton(viewModel = viewModel, drawingMode = drawingMode, isLazyModeActive = isLazyModeActive)
 
                 // Vertical Separator
                 Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
@@ -368,6 +371,106 @@ fun LayersAndActionsSection(
                 onAddLayer = { viewModel.addLayer("New Layer") },
                 onReorder = { from, to -> viewModel.reorderLayers(from, to) }
             )
+        }
+    }
+}
+
+/**
+ * Extra-tools gate (Fill/Gradient/Lazy/Lasso/Rect/Wand/Color) plus Fit-to-Screen, in the
+ * top-right action group. Was a separate standalone button in the bottom toolbar and a
+ * separate Fullscreen button here; merged into one to free up toolbar space.
+ */
+@Composable
+private fun ToolsMenuButton(
+    viewModel: DrawingViewModel,
+    drawingMode: DrawingMode,
+    isLazyModeActive: Boolean
+) {
+    var showTools by remember { mutableStateOf(false) }
+    val isBucketFill = drawingMode is DrawingMode.BucketFill
+    val isSelectionMode = drawingMode.isSelectionTool()
+    val isActive = showTools || isBucketFill || isLazyModeActive || isSelectionMode || drawingMode is DrawingMode.Gradient
+
+    // Icon reflects the active extra tool so it stays visible while the menu is closed
+    val icon = when {
+        isBucketFill -> Icons.Rounded.FormatColorFill
+        drawingMode is DrawingMode.Gradient -> Icons.Rounded.Gradient
+        drawingMode is DrawingMode.SelectLasso -> Icons.Rounded.Polyline
+        drawingMode is DrawingMode.SelectRect -> Icons.Rounded.HighlightAlt
+        drawingMode is DrawingMode.SelectWand -> Icons.Rounded.AutoFixHigh
+        drawingMode is DrawingMode.SelectColor -> Icons.Rounded.Palette
+        isLazyModeActive -> Icons.Rounded.Stream
+        else -> Icons.Rounded.Architecture
+    }
+
+    Box {
+        IconButton(
+            onClick = { showTools = true },
+            colors = IconButtonDefaults.iconButtonColors(
+                containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                contentColor = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+            )
+        ) {
+            Icon(icon, contentDescription = "Tools")
+        }
+        DropdownMenu(
+            expanded = showTools,
+            onDismissRequest = { showTools = false },
+            modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
+        ) {
+            // Tools grouped by function: view first, then paint tools, then selection tools
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("View", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ExtraToolItem("Fit Screen", false, Icons.Rounded.Fullscreen) {
+                        viewModel.requestFitToScreen()
+                        showTools = false
+                    }
+                }
+
+                HorizontalDivider(thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
+
+                Text("Paint", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ExtraToolItem("Fill", isBucketFill, Icons.Rounded.FormatColorFill) {
+                        viewModel.setBucketFillMode()
+                        showTools = false
+                    }
+                    ExtraToolItem("Gradient", drawingMode is DrawingMode.Gradient, Icons.Rounded.Gradient) {
+                        viewModel.setDrawingMode(if (drawingMode is DrawingMode.Gradient) DrawingMode.Freehand else DrawingMode.Gradient)
+                        showTools = false
+                    }
+                    ExtraToolItem("Lazy", isLazyModeActive, Icons.Rounded.Stream) {
+                        viewModel.toggleLazyMode()
+                        showTools = false
+                    }
+                }
+
+                HorizontalDivider(thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
+
+                Text("Select", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    ExtraToolItem("Lasso", drawingMode is DrawingMode.SelectLasso, Icons.Rounded.Polyline) {
+                        viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectLasso) DrawingMode.Freehand else DrawingMode.SelectLasso)
+                        showTools = false
+                    }
+                    ExtraToolItem("Rect", drawingMode is DrawingMode.SelectRect, Icons.Rounded.HighlightAlt) {
+                        viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectRect) DrawingMode.Freehand else DrawingMode.SelectRect)
+                        showTools = false
+                    }
+                    ExtraToolItem("Wand", drawingMode is DrawingMode.SelectWand, Icons.Rounded.AutoFixHigh) {
+                        viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectWand) DrawingMode.Freehand else DrawingMode.SelectWand)
+                        showTools = false
+                    }
+                    ExtraToolItem("Color", drawingMode is DrawingMode.SelectColor, Icons.Rounded.Palette) {
+                        viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectColor) DrawingMode.Freehand else DrawingMode.SelectColor)
+                        showTools = false
+                    }
+                }
+            }
         }
     }
 }

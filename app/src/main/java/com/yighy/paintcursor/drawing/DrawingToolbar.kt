@@ -49,7 +49,6 @@ fun DrawingToolbar(
 ) {
     var activePanel by remember { mutableStateOf(ToolbarPanel.None) }
     var showPresetsList by remember { mutableStateOf(false) }
-    var showExtraTools by remember { mutableStateOf(false) }
 
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val canUndo by remember(viewModel) { viewModel.uiState.map { it.canUndo }.distinctUntilChanged() }.collectAsState(false)
@@ -74,9 +73,12 @@ fun DrawingToolbar(
         if (isLazyModeActive) activePanel = ToolbarPanel.Settings
     }
 
-    // The presets list lives inside the brush panel
+    // The presets list lives inside the brush panel; auto-open it whenever the Brush panel
+    // is opened (from any trigger, not just its own toggle button), and hide it once the
+    // panel closes. The "Presets" button inside QuickBrushPanel can still toggle it off
+    // without leaving the Brush panel.
     LaunchedEffect(activePanel) {
-        if (activePanel != ToolbarPanel.Brush) showPresetsList = false
+        showPresetsList = activePanel == ToolbarPanel.Brush
     }
 
     val toolbarAnimSpec = remember { 
@@ -129,154 +131,18 @@ fun DrawingToolbar(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Row 1: Tools & Navigation
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Left: Drawing Tools with Scroll Indicators
-                val scrollState = rememberScrollState()
-                Box(
-                    modifier = Modifier.weight(1f),
-                    contentAlignment = Alignment.CenterStart
+            // The extra-tools gate (Fill/Gradient/Lazy/Lasso/Rect/Wand/Color) moved to the
+            // top-right action group (see ToolsMenuButton in DrawingScreen.kt), which also
+            // absorbed the Fit-to-Screen action. Brush/Color/Settings are centered as a
+            // unit; Undo/Redo are pinned to the far right edge instead, separate from that
+            // centered group, so they stay reachable at a fixed spot regardless of what
+            // else is in the row.
+            Box(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.align(Alignment.Center),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.horizontalScroll(scrollState),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        val isEraser = drawingMode is DrawingMode.Eraser || drawingMode is DrawingMode.StraightLineEraser
-                        val isStraightLine = drawingMode is DrawingMode.StraightLine || drawingMode is DrawingMode.StraightLineEraser
-                        val isBucketFill = drawingMode is DrawingMode.BucketFill
-
-                        // Unified Drawing Mode Toggle (Pencil/Line)
-                        ToolToggleButton(
-                            selected = !isBucketFill && !isSelectionMode,
-                            onClick = { viewModel.toggleDrawingMode() },
-                            icon = if (isStraightLine) Icons.Rounded.HorizontalRule else Icons.Rounded.Gesture
-                        )
-
-                        // Eraser Tool Toggle
-                        ToolToggleButton(
-                            selected = isEraser,
-                            onClick = { viewModel.toggleEraser() },
-                            icon = EraserIcon,
-                            selectedColor = Color.White,
-                            selectedContainerColor = MaterialTheme.colorScheme.error
-                        )
-
-                        Box {
-                            // Icon reflects the active extra tool so it stays visible while the menu is closed
-                            val extraToolsIcon = when {
-                                isBucketFill -> Icons.Rounded.FormatColorFill
-                                drawingMode is DrawingMode.Gradient -> Icons.Rounded.Gradient
-                                drawingMode is DrawingMode.SelectLasso -> Icons.Rounded.Polyline
-                                drawingMode is DrawingMode.SelectRect -> Icons.Rounded.HighlightAlt
-                                drawingMode is DrawingMode.SelectWand -> Icons.Rounded.AutoFixHigh
-                                drawingMode is DrawingMode.SelectColor -> Icons.Rounded.Palette
-                                isLazyModeActive -> Icons.Rounded.Stream
-                                else -> Icons.Rounded.Architecture
-                            }
-                            ToolToggleButton(
-                                selected = showExtraTools || isBucketFill || isLazyModeActive || isSelectionMode || drawingMode is DrawingMode.Gradient,
-                                onClick = { showExtraTools = true },
-                                icon = extraToolsIcon
-                            )
-                            DropdownMenu(
-                                expanded = showExtraTools,
-                                onDismissRequest = { showExtraTools = false },
-                                modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                            ) {
-                                // Tools grouped by function: paint tools on top, selection tools below
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text("Paint", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        ExtraToolItem("Fill", isBucketFill, Icons.Rounded.FormatColorFill) {
-                                            viewModel.setBucketFillMode()
-                                            showExtraTools = false
-                                        }
-                                        ExtraToolItem("Gradient", drawingMode is DrawingMode.Gradient, Icons.Rounded.Gradient) {
-                                            viewModel.setDrawingMode(if (drawingMode is DrawingMode.Gradient) DrawingMode.Freehand else DrawingMode.Gradient)
-                                            showExtraTools = false
-                                        }
-                                        ExtraToolItem("Lazy", isLazyModeActive, Icons.Rounded.Stream) {
-                                            viewModel.toggleLazyMode()
-                                            showExtraTools = false
-                                        }
-                                    }
-
-                                    HorizontalDivider(thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
-
-                                    Text("Select", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                        ExtraToolItem("Lasso", drawingMode is DrawingMode.SelectLasso, Icons.Rounded.Polyline) {
-                                            viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectLasso) DrawingMode.Freehand else DrawingMode.SelectLasso)
-                                            showExtraTools = false
-                                        }
-                                        ExtraToolItem("Rect", drawingMode is DrawingMode.SelectRect, Icons.Rounded.HighlightAlt) {
-                                            viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectRect) DrawingMode.Freehand else DrawingMode.SelectRect)
-                                            showExtraTools = false
-                                        }
-                                        ExtraToolItem("Wand", drawingMode is DrawingMode.SelectWand, Icons.Rounded.AutoFixHigh) {
-                                            viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectWand) DrawingMode.Freehand else DrawingMode.SelectWand)
-                                            showExtraTools = false
-                                        }
-                                        ExtraToolItem("Color", drawingMode is DrawingMode.SelectColor, Icons.Rounded.Palette) {
-                                            viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectColor) DrawingMode.Freehand else DrawingMode.SelectColor)
-                                            showExtraTools = false
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // Indicators with animated visibility
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = scrollState.value > 0,
-                        enter = fadeIn(),
-                        exit = fadeOut(),
-                        modifier = Modifier.align(Alignment.CenterStart)
-                    ) {
-                        Icon(
-                            Icons.Rounded.ChevronLeft,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                            modifier = Modifier
-                                .size(16.dp)
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.8f), CircleShape)
-                        )
-                    }
-
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = scrollState.value < scrollState.maxValue,
-                        enter = fadeIn(),
-                        exit = fadeOut(),
-                        modifier = Modifier.align(Alignment.CenterEnd)
-                    ) {
-                        Icon(
-                            Icons.Rounded.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                            modifier = Modifier
-                                .size(16.dp)
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.8f), CircleShape)
-                        )
-                    }
-                }
-
-                // Vertical Separator
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp)
-                        .width(1.dp)
-                        .height(24.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                )
-
                 // Center: Brush & Color Picker
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     ToolToggleButton(
@@ -317,14 +183,28 @@ fun DrawingToolbar(
                     }
                 }
 
-                // Right: Settings & Undo/Redo
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Vertical Separator
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 4.dp)
+                        .width(1.dp)
+                        .height(24.dp)
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                )
+
+                    // Settings
                     ToolToggleButton(
                         selected = activePanel == ToolbarPanel.Settings,
                         onClick = { activePanel = if (activePanel == ToolbarPanel.Settings) ToolbarPanel.None else ToolbarPanel.Settings },
                         icon = Icons.Rounded.Tune
                     )
+                }
 
+                // Undo/Redo: pinned to the far right edge, independent of the centered group
+                Row(
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     IconButton(onClick = { viewModel.undo() }, enabled = canUndo, modifier = Modifier.size(32.dp)) {
                         Icon(Icons.AutoMirrored.Rounded.Undo, null, modifier = Modifier.size(20.dp))
                     }
@@ -585,19 +465,11 @@ fun QuickBrushPanel(
     showPresetsList: Boolean,
     onTogglePresets: () -> Unit
 ) {
-    val selectedWidth by remember(viewModel) { viewModel.uiState.map { it.selectedWidth }.distinctUntilChanged() }.collectAsState(20f)
-    val brushSoftness by remember(viewModel) { viewModel.uiState.map { it.brushSoftness }.distinctUntilChanged() }.collectAsState(0f)
-    val brushOpacity by remember(viewModel) { viewModel.uiState.map { it.brushOpacity }.distinctUntilChanged() }.collectAsState(1.0f)
-    val brushFlow by remember(viewModel) { viewModel.uiState.map { it.brushFlow }.distinctUntilChanged() }.collectAsState(1.0f)
-
     Column {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SettingRow("Size", "${selectedWidth.toInt()}px", selectedWidth, { viewModel.selectWidth(it) }, 1f..150f)
-            SettingRow("Softness", "${(brushSoftness * 100).toInt()}%", brushSoftness, { viewModel.setBrushSoftness(it) }, 0f..1.0f)
-            SettingRow("Opacity", "${(brushOpacity * 100).toInt()}%", brushOpacity, { viewModel.setBrushOpacity(it) }, 0f..1.0f)
-            SettingRow("Flow", "${(brushFlow * 100).toInt()}%", brushFlow, { viewModel.setBrushFlow(it) }, 0f..1.0f)
-            
+            // Size/Softness/Opacity/Flow sliders moved to the FAB's right satellite gate
+            // (see HoverDrawButton); this panel keeps presets and the studio shortcut
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(
                     onClick = onTogglePresets,
@@ -727,7 +599,8 @@ fun PresetsListContent(viewModel: DrawingViewModel) {
 
 @Composable
 fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
-    val brushSmoothing by remember(viewModel) { viewModel.uiState.map { it.brushSmoothing }.distinctUntilChanged() }.collectAsState(0.5f)
+    // Smoothing lives in the Brush Studio only now (see BrushStudio.kt); removed here to
+    // keep this quick panel focused on things that aren't brush-specific
     val cursorSensitivity by remember(viewModel) { viewModel.uiState.map { it.cursorSensitivity }.distinctUntilChanged() }.collectAsState(0.6f)
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val fillTolerance by remember(viewModel) { viewModel.uiState.map { it.fillTolerance }.distinctUntilChanged() }.collectAsState(10f)
@@ -737,7 +610,6 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
     Column {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            SettingRow("Smoothing", "${(brushSmoothing * 100).toInt()}%", brushSmoothing, { viewModel.setBrushSmoothing(it) }, 0f..1.0f)
             SettingRow("Draw Sensitivity", "${"%.1f".format(cursorSensitivity)}x", cursorSensitivity, { viewModel.setCursorSensitivity(it) }, 0.1f..1.0f)
             
             if (isLazyModeActive) {

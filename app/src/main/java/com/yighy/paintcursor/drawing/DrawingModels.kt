@@ -113,6 +113,9 @@ data class DrawingState(
     val cursorSensitivity: Float = 0.6f,
     val cursorThickness: Float = 1.0f,
     val fabDragThreshold: Float = 100f,
+    // Scales the right satellite's vertical drag response: below 1 = longer travel + wider
+    // dead zone (safer, coarser), above 1 = shorter travel + narrower dead zone (twitchier)
+    val satelliteGateSensitivity: Float = 1f,
     
     val canvasScale: Float = 1f,
     val canvasOffset: Offset = Offset.Zero,

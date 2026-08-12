@@ -35,6 +35,7 @@ fun SettingsScreen(
     val hideStatusBar by preferenceManager.hideStatusBar.collectAsState(initial = true)
     val dynamicColor by preferenceManager.dynamicColor.collectAsState(initial = true)
     val offscreenCursorArrow by preferenceManager.offscreenCursorArrow.collectAsState(initial = false)
+    val satelliteGateSensitivity by preferenceManager.satelliteGateSensitivity.collectAsState(initial = 1f)
     val context = LocalContext.current
     val versionName = remember {
         try {
@@ -149,6 +150,14 @@ fun SettingsScreen(
                     valueLabel = "${fabSize.toInt()} dp",
                     range = 40f..120f,
                     onValueChange = { scope.launch { preferenceManager.setFabSize(it) } }
+                )
+
+                SettingsSliderRow(
+                    label = "Satellite Sensitivity",
+                    value = satelliteGateSensitivity,
+                    valueLabel = String.format("%.1fx", satelliteGateSensitivity),
+                    range = 0.25f..2.0f,
+                    onValueChange = { scope.launch { preferenceManager.setSatelliteGateSensitivity(it) } }
                 )
             }
             
