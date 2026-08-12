@@ -46,7 +46,6 @@ fun DrawingToolbar(
     modifier: Modifier = Modifier
 ) {
     var activePanel by remember { mutableStateOf(ToolbarPanel.None) }
-    var showPresetsList by remember { mutableStateOf(false) }
 
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val canUndo by remember(viewModel) { viewModel.uiState.map { it.canUndo }.distinctUntilChanged() }.collectAsState(false)
@@ -69,14 +68,6 @@ fun DrawingToolbar(
 
     LaunchedEffect(isLazyModeActive) {
         if (isLazyModeActive) activePanel = ToolbarPanel.Settings
-    }
-
-    // The presets list lives inside the brush panel; auto-open it whenever the Brush panel
-    // is opened (from any trigger, not just its own toggle button), and hide it once the
-    // panel closes. The "Presets" button inside QuickBrushPanel can still toggle it off
-    // without leaving the Brush panel.
-    LaunchedEffect(activePanel) {
-        showPresetsList = activePanel == ToolbarPanel.Brush
     }
 
     val toolbarAnimSpec = remember { MotionTokens.panelTransition }
@@ -126,17 +117,16 @@ fun DrawingToolbar(
             // Row 1: Tools & Navigation
             // The extra-tools gate (Fill/Gradient/Lazy/Lasso/Rect/Wand/Color) moved to the
             // top-right action group (see ToolsMenuButton in DrawingScreen.kt), which also
-            // absorbed the Fit-to-Screen action. Brush/Color/Settings are centered as a
-            // unit; Undo/Redo are pinned to the far right edge instead, separate from that
-            // centered group, so they stay reachable at a fixed spot regardless of what
-            // else is in the row.
-            Box(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                // Center: Brush & Color Picker
+            // absorbed the Fit-to-Screen action. Everything left here sits in one centered
+            // row, grouped by separators: Brush/Color, then Settings, then Undo/Redo. They
+            // used to be a centered group plus an end-pinned pair, but at the 48dp minimum
+            // touch target those two alignments overlap on a ~360dp-wide screen.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Brush & Color Picker
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     ToolToggleButton(
                         selected = activePanel == ToolbarPanel.Brush,
@@ -147,7 +137,7 @@ fun DrawingToolbar(
                     // Specialized Color Picker Button
                     Box(
                         modifier = Modifier
-                            .size(width = 42.dp, height = 40.dp)
+                            .size(48.dp)
                             .clip(MaterialTheme.shapes.medium)
                             .background(if (activePanel == ToolbarPanel.Color) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
                             .clickable { activePanel = if (activePanel == ToolbarPanel.Color) ToolbarPanel.None else ToolbarPanel.Color },
@@ -176,34 +166,23 @@ fun DrawingToolbar(
                     }
                 }
 
-                // Vertical Separator
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = 4.dp)
-                        .width(1.dp)
-                        .height(24.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                ToolbarSeparator()
+
+                // Settings
+                ToolToggleButton(
+                    selected = activePanel == ToolbarPanel.Settings,
+                    onClick = { activePanel = if (activePanel == ToolbarPanel.Settings) ToolbarPanel.None else ToolbarPanel.Settings },
+                    icon = Icons.Rounded.Tune
                 )
 
-                    // Settings
-                    ToolToggleButton(
-                        selected = activePanel == ToolbarPanel.Settings,
-                        onClick = { activePanel = if (activePanel == ToolbarPanel.Settings) ToolbarPanel.None else ToolbarPanel.Settings },
-                        icon = Icons.Rounded.Tune
-                    )
-                }
+                ToolbarSeparator()
 
-                // Undo/Redo: pinned to the far right edge, independent of the centered group
-                Row(
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = { viewModel.undo() }, enabled = canUndo, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.AutoMirrored.Rounded.Undo, null, modifier = Modifier.size(20.dp))
-                    }
-                    IconButton(onClick = { viewModel.redo() }, enabled = canRedo, modifier = Modifier.size(32.dp)) {
-                        Icon(Icons.AutoMirrored.Rounded.Redo, null, modifier = Modifier.size(20.dp))
-                    }
+                // History
+                IconButton(onClick = { viewModel.undo() }, enabled = canUndo) {
+                    Icon(Icons.AutoMirrored.Rounded.Undo, "Undo", modifier = Modifier.size(20.dp))
+                }
+                IconButton(onClick = { viewModel.redo() }, enabled = canRedo) {
+                    Icon(Icons.AutoMirrored.Rounded.Redo, "Redo", modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -216,7 +195,7 @@ fun DrawingToolbar(
                 QuickBrushPanel(viewModel, onOpenStudio = {
                     activePanel = ToolbarPanel.None
                     onOpenBrushStudio()
-                }, showPresetsList = showPresetsList, onTogglePresets = { showPresetsList = !showPresetsList })
+                })
             }
 
             // Color Picker Panel - Smooth Slide
@@ -269,7 +248,7 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
                             onClick = { viewModel.commitSelection() },
-                            modifier = Modifier.weight(1f).height(36.dp),
+                            modifier = Modifier.weight(1f).height(48.dp),
                             shape = MaterialTheme.shapes.medium
                         ) {
                             Icon(Icons.Rounded.Check, null, modifier = Modifier.size(16.dp))
@@ -278,7 +257,7 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
                         }
                         OutlinedButton(
                             onClick = { viewModel.cancelSelection() },
-                            modifier = Modifier.weight(1f).height(36.dp),
+                            modifier = Modifier.weight(1f).height(48.dp),
                             shape = MaterialTheme.shapes.medium
                         ) {
                             Icon(Icons.Rounded.Close, null, modifier = Modifier.size(16.dp))
@@ -299,7 +278,7 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
                         if (isSelectionToolActive) {
                             Button(
                                 onClick = { viewModel.liftSelection(cut = true) },
-                                modifier = Modifier.weight(1f).height(36.dp),
+                                modifier = Modifier.weight(1f).height(48.dp),
                                 shape = MaterialTheme.shapes.medium
                             ) {
                                 Text("Move", style = MaterialTheme.typography.labelSmall)
@@ -307,7 +286,7 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
                         }
                         Button(
                             onClick = { viewModel.duplicateSelection() },
-                            modifier = Modifier.weight(1f).height(36.dp),
+                            modifier = Modifier.weight(1f).height(48.dp),
                             shape = MaterialTheme.shapes.medium,
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
                         ) {
@@ -315,7 +294,7 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
                         }
                         Button(
                             onClick = { viewModel.deleteSelection() },
-                            modifier = Modifier.weight(1f).height(36.dp),
+                            modifier = Modifier.weight(1f).height(48.dp),
                             shape = MaterialTheme.shapes.medium,
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
                         ) {
@@ -325,14 +304,14 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(
                             onClick = { viewModel.invertSelection() },
-                            modifier = Modifier.weight(1f).height(36.dp),
+                            modifier = Modifier.weight(1f).height(48.dp),
                             shape = MaterialTheme.shapes.medium
                         ) {
                             Text("Invert", style = MaterialTheme.typography.labelSmall)
                         }
                         OutlinedButton(
                             onClick = { viewModel.clearSelection() },
-                            modifier = Modifier.weight(1f).height(36.dp),
+                            modifier = Modifier.weight(1f).height(48.dp),
                             shape = MaterialTheme.shapes.medium
                         ) {
                             Text("Deselect", style = MaterialTheme.typography.labelSmall)
@@ -372,6 +351,18 @@ fun ExtraToolItem(
     }
 }
 
+/** Hairline divider grouping the toolbar row into brush/color, settings and history. */
+@Composable
+private fun ToolbarSeparator() {
+    Box(
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .width(1.dp)
+            .height(24.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    )
+}
+
 @Composable
 fun ToolToggleButton(
     selected: Boolean,
@@ -382,7 +373,7 @@ fun ToolToggleButton(
 ) {
     Box(
         modifier = Modifier
-            .size(width = 42.dp, height = 40.dp)
+            .size(48.dp)
             .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -416,22 +407,29 @@ fun ColorPickerContent(viewModel: DrawingViewModel, onDismiss: () -> Unit) {
         if (colorHistory.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 colorHistory.forEach { color ->
+                    // The swatch stays 32dp visually; the tappable box around it is 48dp so
+                    // the row still meets the minimum touch target without fat circles.
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(color)
-                            .border(
-                                width = if (color == selectedColor) 2.dp else 0.5.dp,
-                                color = if (color == selectedColor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                shape = CircleShape
-                            )
-                            .clickable { viewModel.selectColor(color) }
-                    )
+                            .size(48.dp)
+                            .clickable { viewModel.selectColor(color) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(color)
+                                .border(
+                                    width = if (color == selectedColor) 2.dp else 0.5.dp,
+                                    color = if (color == selectedColor) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                    shape = CircleShape
+                                )
+                        )
+                    }
                 }
             }
             HorizontalDivider(thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
@@ -453,37 +451,38 @@ fun ColorPickerContent(viewModel: DrawingViewModel, onDismiss: () -> Unit) {
 
 @Composable
 fun QuickBrushPanel(
-    viewModel: DrawingViewModel, 
-    onOpenStudio: () -> Unit,
-    showPresetsList: Boolean,
-    onTogglePresets: () -> Unit
+    viewModel: DrawingViewModel,
+    onOpenStudio: () -> Unit
 ) {
     Column {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Size/Softness/Opacity/Flow sliders moved to the FAB's right satellite gate
-            // (see HoverDrawButton); this panel keeps presets and the studio shortcut
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = onTogglePresets,
-                    modifier = Modifier.weight(1f).height(36.dp),
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondaryContainer, contentColor = MaterialTheme.colorScheme.onSecondaryContainer)
-                ) {
-                    Text("Presets", style = MaterialTheme.typography.labelSmall)
-                }
-                Button(
+            // Size/Softness/Opacity/Flow sliders live on the FAB's right satellite gate
+            // (see HoverDrawButton). Opening this panel goes straight to the saved presets
+            // rather than to an intermediate menu; the studio is one tap from the header.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    "Presets",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+                TextButton(
                     onClick = onOpenStudio,
-                    modifier = Modifier.weight(1f).height(36.dp),
+                    modifier = Modifier.height(48.dp),
                     shape = MaterialTheme.shapes.medium
                 ) {
-                    Text("Settings", style = MaterialTheme.typography.labelSmall)
+                    Icon(Icons.Rounded.Tune, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Brush studio", style = MaterialTheme.typography.labelMedium)
                 }
             }
 
-            if (showPresetsList) {
-                PresetsListContent(viewModel)
-            }
+            PresetsListContent(viewModel)
         }
     }
 }
@@ -515,7 +514,9 @@ fun PresetsListContent(viewModel: DrawingViewModel) {
                                 viewModel.selectCustomBrush(brush)
                             }
                             .background(if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else Color.Transparent)
-                            .padding(12.dp),
+                            // Vertical padding is small because the 48dp action buttons now
+                            // set the row height; this keeps rows the same size as before.
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -524,11 +525,11 @@ fun PresetsListContent(viewModel: DrawingViewModel) {
                             Text("${brush.size.toInt()}px - Flow ${(brush.flow*100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Row {
-                            IconButton(onClick = { brushToRename = brush }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Rounded.Edit, null, tint = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            IconButton(onClick = { brushToRename = brush }) {
+                                Icon(Icons.Rounded.Edit, "Rename brush", tint = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                             }
-                            IconButton(onClick = { brushToDelete = brush }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                            IconButton(onClick = { brushToDelete = brush }) {
+                                Icon(Icons.Rounded.Delete, "Delete brush", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -624,7 +625,9 @@ fun SettingRow(label: String, valueLabel: String, value: Float, onValueChange: (
                 Text(label, style = MaterialTheme.typography.labelSmall)
                 Text(valueLabel, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             }
-            Slider(value = value, onValueChange = onValueChange, valueRange = range, modifier = Modifier.height(24.dp))
+            // No height constraint: Slider's own 48dp box is the thumb's touch target,
+            // and clamping it to 24dp made the thumb hard to grab vertically.
+            Slider(value = value, onValueChange = onValueChange, valueRange = range)
         }
     }
 }
