@@ -22,7 +22,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -69,7 +68,6 @@ fun HomeScreen(
             Text(
                 text = "Projects",
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
             Box(modifier = Modifier.fillMaxSize()) {
@@ -99,8 +97,7 @@ fun HomeScreen(
                     ) {
                         Text(
                             text = "No projects yet",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.titleMedium
                         )
                         Text(
                             text = "Start your first sketch and it will show up here.",
@@ -254,7 +251,6 @@ fun ProjectCard(
                     Text(
                         text = "${project.width} \u00D7 ${project.height}",
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
@@ -272,7 +268,6 @@ fun ProjectCard(
                     Text(
                         text = project.name,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
                         maxLines = 1
                     )
                     Text(
@@ -283,13 +278,11 @@ fun ProjectCard(
                 }
                 
                 Box {
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier.size(24.dp)
-                    ) {
+                    IconButton(onClick = { showMenu = true }) {
                         Icon(
                             Icons.Default.MoreVert,
                             contentDescription = "Actions",
+                            modifier = Modifier.size(20.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -300,7 +293,7 @@ fun ProjectCard(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Rename", fontWeight = FontWeight.Medium) },
+                            text = { Text("Rename") },
                             onClick = { 
                                 showMenu = false
                                 onRename() 
@@ -308,7 +301,7 @@ fun ProjectCard(
                             leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary) }
                         )
                         DropdownMenuItem(
-                            text = { Text("Delete", fontWeight = FontWeight.Medium) },
+                            text = { Text("Delete") },
                             onClick = { 
                                 showMenu = false
                                 onDelete() 

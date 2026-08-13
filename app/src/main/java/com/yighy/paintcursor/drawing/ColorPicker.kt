@@ -1,5 +1,10 @@
 package com.yighy.paintcursor.drawing
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +27,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.yighy.paintcursor.ui.theme.MotionTokens
 
 @Composable
 fun HSBPickerView(
@@ -56,37 +62,53 @@ fun HSBPickerView(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (!isSliderMode) {
-            SaturationValueBox(
-                hue = hue,
-                saturation = saturation,
-                value = brightness,
-                onValueChange = { s, v ->
-                    saturation = s
-                    brightness = v
-                    onColorChanged(Color.hsv(hue, s, v))
-                }
-            )
+        // The two modes are quite different heights, so the swap needs both a cross-fade and
+        // a size transform - a bare if/else snapped the whole panel to its new height.
+        AnimatedContent(
+            targetState = isSliderMode,
+            transitionSpec = {
+                (fadeIn(MotionTokens.expressiveEnter) togetherWith fadeOut(MotionTokens.expressiveExit))
+                    .using(SizeTransform(clip = false) { _, _ -> MotionTokens.panelTransition })
+            },
+            label = "colorPickerMode"
+        ) { sliderMode ->
+            if (!sliderMode) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SaturationValueBox(
+                        hue = hue,
+                        saturation = saturation,
+                        value = brightness,
+                        onValueChange = { s, v ->
+                            saturation = s
+                            brightness = v
+                            onColorChanged(Color.hsv(hue, s, v))
+                        }
+                    )
 
-            HueSlider(
-                hue = hue,
-                onHueChange = { h ->
-                    hue = h
-                    onColorChanged(Color.hsv(h, saturation, brightness))
+                    HueSlider(
+                        hue = hue,
+                        onHueChange = { h ->
+                            hue = h
+                            onColorChanged(Color.hsv(h, saturation, brightness))
+                        }
+                    )
                 }
-            )
-        } else {
-            HSBSlidersView(
-                hue = hue,
-                saturation = saturation,
-                value = brightness,
-                onValueChange = { h, s, v ->
-                    hue = h
-                    saturation = s
-                    brightness = v
-                    onColorChanged(Color.hsv(h, s, v))
-                }
-            )
+            } else {
+                HSBSlidersView(
+                    hue = hue,
+                    saturation = saturation,
+                    value = brightness,
+                    onValueChange = { h, s, v ->
+                        hue = h
+                        saturation = s
+                        brightness = v
+                        onColorChanged(Color.hsv(h, s, v))
+                    }
+                )
+            }
         }
         
         Row(
@@ -105,26 +127,22 @@ fun HSBPickerView(
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(
                     onClick = onEyeDropperClick,
-                    modifier = Modifier.size(32.dp),
                     colors = IconButtonDefaults.iconButtonColors(
                         containerColor = if (isEyeDropperActive) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
                     )
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Colorize,
-                        contentDescription = null,
+                        contentDescription = "Pick colour from canvas",
                         modifier = Modifier.size(20.dp),
                         tint = if (isEyeDropperActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary
                     )
                 }
 
-                IconButton(
-                    onClick = { onModeToggle(!isSliderMode) },
-                    modifier = Modifier.size(32.dp)
-                ) {
+                IconButton(onClick = { onModeToggle(!isSliderMode) }) {
                     Icon(
                         imageVector = if (isSliderMode) Icons.Rounded.Square else Icons.Rounded.LinearScale,
-                        contentDescription = null,
+                        contentDescription = if (isSliderMode) "Switch to colour field" else "Switch to sliders",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -225,10 +243,11 @@ fun HueSlider(hue: Float, onHueChange: (Float) -> Unit) {
     val hueColors = remember {
         List(360) { Color.hsv(it.toFloat(), 1f, 1f) }
     }
+    // No height on the wrapper: the real Slider sits inside it, and clamping the box to 16dp
+    // clamped the thumb's touch area to 16dp with it. The 8dp gradient below is the visual
+    // track; the Slider keeps its own 48dp grab area centred on it.
     Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(16.dp),
+        modifier = Modifier.fillMaxWidth(),
         contentAlignment = Alignment.Center
     ) {
         Box(

@@ -74,6 +74,9 @@ class DrawingViewModel(
     // Selection tool state
     private var rectAnchor = Offset.Zero
     private var floatingFromCut = false
+    /** Layer the floating selection was lifted from, so a paste onto a different one can be
+     *  told apart from a move within the same layer (they need different history entries). */
+    private var floatingSourceLayerId: Long? = null
     // True while the floating selection holds an imported image whose layer isn't created yet
     private var pendingImport = false
 
@@ -1064,6 +1067,7 @@ class DrawingViewModel(
             Canvas(layerBitmap).drawBitmap(mask, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
         }
         floatingFromCut = cut
+        floatingSourceLayerId = state.activeLayerId
 
         val origin = Offset(left.toFloat(), top.toFloat())
         _uiState.update { it.copy(
@@ -1211,7 +1215,15 @@ class DrawingViewModel(
         if (layerBitmap != null) {
             // A cut already saved history at lift time, so the whole move undoes as one step.
             // A duplicate only paints inside the transformed floating rect - snapshot just that.
-            if (!floatingFromCut) {
+            // A cut that lands on a *different* layer still needs its own entry: the lift-time
+            // snapshot covers the source layer only, so without this the paste would survive
+            // an undo that had already restored the pixels it came from.
+            if (SelectionCommitPolicy.needsTargetSnapshot(
+                    fromCut = floatingFromCut,
+                    sourceLayerId = floatingSourceLayerId,
+                    targetLayerId = state.activeLayerId
+                )
+            ) {
                 val bounds = floatingPasteBounds(state, floatBitmap)
                 saveHistoryState(mapOf(state.activeLayerId to SnapshotSpec.Region(bounds)))
             }
@@ -1245,6 +1257,7 @@ class DrawingViewModel(
 
     fun clearSelection() {
         floatingFromCut = false
+        floatingSourceLayerId = null
         pendingImport = false
         _uiState.update { it.copy(
             selectionPoints = emptyList(),
@@ -1896,7 +1909,15 @@ class DrawingViewModel(
         } 
     }
     fun selectLayer(id: Long) {
-        finalizeSelection()
+        // A floating selection deliberately survives a layer change: that IS how you paste
+        // into another layer. finalizeSelection() would have stamped it back into the layer
+        // you are leaving, which is why this only ever worked when switching to a brand new
+        // layer (addLayer doesn't finalize). An unfinished lasso is still dropped, though -
+        // a half-drawn path has no meaning on a different layer.
+        val state = _uiState.value
+        if (state.floatingBitmap == null && !state.isSelectionClosed && state.selectionPoints.isNotEmpty()) {
+            clearSelection()
+        }
         _uiState.update { it.copy(activeLayerId = id) }
         viewModelScope.launch { saveProjectBrushSettings() }
     }

@@ -38,7 +38,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -94,7 +93,6 @@ fun LayerOptionsPanel(
                     Text(
                         text = layer.name,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
                         maxLines = 1
                     )
                     Icon(Icons.Rounded.Edit, contentDescription = "Rename layer", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -110,7 +108,7 @@ fun LayerOptionsPanel(
             Column {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text("Opacity", style = MaterialTheme.typography.labelSmall)
-                    Text("${(layer.opacity * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Text("${(layer.opacity * 100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 }
                 Slider(
                     value = layer.opacity,
@@ -228,7 +226,8 @@ fun SmallActionChip(
 ) {
     Surface(
         onClick = onClick,
-        modifier = modifier.height(if (label != null) 52.dp else 40.dp),
+        // The icon-only variant was 40dp, under the minimum touch target.
+        modifier = modifier.height(if (label != null) 52.dp else 48.dp),
         shape = MaterialTheme.shapes.medium,
         color = containerColor
     ) {

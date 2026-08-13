@@ -14,9 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.yighy.paintcursor.data.AppTheme
 import com.yighy.paintcursor.data.PreferenceManager
 import kotlinx.coroutines.launch
@@ -51,13 +50,10 @@ fun SettingsScreen(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             LargeTopAppBar(
-                title = { 
-                    Text(
-                        "Settings", 
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold
-                    ) 
-                },
+                // No style override: LargeTopAppBar keeps two title styles, one expanded and
+                // one collapsed, and a hard-coded style overrides both - the collapsed bar
+                // ended up rendering a 36sp title in 64dp of height.
+                title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
@@ -78,12 +74,24 @@ fun SettingsScreen(
             // Appearance Section
             SettingsSection(title = "Appearance", icon = Icons.Rounded.Palette) {
                 SettingsRow(label = "App Theme") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         AppTheme.entries.forEach { theme ->
                             FilterChip(
                                 selected = appTheme == theme,
                                 onClick = { scope.launch { preferenceManager.setAppTheme(theme) } },
-                                label = { Text(theme.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                                // The chip stretches, so the label has to be told to centre
+                                // itself - it would otherwise sit against the start edge.
+                                label = {
+                                    Text(
+                                        text = theme.name.lowercase().replaceFirstChar { it.uppercase() },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Center
+                                    )
+                                },
+                                modifier = Modifier.weight(1f),
                                 shape = MaterialTheme.shapes.medium
                             )
                         }
@@ -167,7 +175,7 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
 
@@ -185,12 +193,13 @@ fun SettingsSection(title: String, icon: androidx.compose.ui.graphics.vector.Ima
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+            // Sentence case, no forced tracking: all-caps with letterSpacing is the Material 2
+            // "overline" idiom that M3 dropped. The colour and the leading icon already
+            // separate this from the rows below.
             Text(
-                text = title.uppercase(),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
-                letterSpacing = 1.sp
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary
             )
         }
         Surface(
@@ -211,7 +220,7 @@ fun SettingsSection(title: String, icon: androidx.compose.ui.graphics.vector.Ima
 @Composable
 fun SettingsRow(label: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+        Text(label, style = MaterialTheme.typography.titleMedium)
         content()
     }
 }
@@ -224,7 +233,7 @@ fun SettingsToggleRow(label: String, subtitle: String, checked: Boolean, onCheck
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            Text(label, style = MaterialTheme.typography.titleMedium)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
@@ -235,8 +244,9 @@ fun SettingsToggleRow(label: String, subtitle: String, checked: Boolean, onCheck
 fun SettingsSliderRow(label: String, value: Float, valueLabel: String, range: ClosedFloatingPointRange<Float>, steps: Int = 0, onValueChange: (Float) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(valueLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+            Text(label, style = MaterialTheme.typography.titleMedium)
+            // The value stays distinguishable through colour, not weight.
+            Text(valueLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
         }
         Slider(
             value = value,

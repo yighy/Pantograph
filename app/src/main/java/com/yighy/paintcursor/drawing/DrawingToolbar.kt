@@ -45,31 +45,26 @@ enum class ToolbarPanel { None, Brush, Color, Settings }
 fun DrawingToolbar(
     viewModel: DrawingViewModel,
     onOpenBrushStudio: () -> Unit,
+    // Hoisted: which panel is open is decided by whatever the user just tapped, including
+    // the tool menu that lives in DrawingScreen. Deriving it from state changes here meant a
+    // tool that was re-selected without changing state simply never reopened its panel.
+    activePanel: ToolbarPanel,
+    onActivePanelChange: (ToolbarPanel) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var activePanel by remember { mutableStateOf(ToolbarPanel.None) }
-
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val canUndo by remember(viewModel) { viewModel.uiState.map { it.canUndo }.distinctUntilChanged() }.collectAsState(false)
     val canRedo by remember(viewModel) { viewModel.uiState.map { it.canRedo }.distinctUntilChanged() }.collectAsState(false)
     val selectedColor by remember(viewModel) { viewModel.uiState.map { it.selectedColor }.distinctUntilChanged() }.collectAsState(Color.Black)
-    val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
 
     val isSelectionMode = drawingMode.isSelectionTool()
     val isSelectionClosed by remember(viewModel) { viewModel.uiState.map { it.isSelectionClosed }.distinctUntilChanged() }.collectAsState(false)
 
-    // Auto-show panels when specialized tools are selected (UX improvement)
+    // Entering a selection tool still closes whatever was open, so the selection controls are
+    // immediately visible. This one stays state-driven because it only ever *closes* panels -
+    // a repeated selection with nothing to change is correctly a no-op.
     LaunchedEffect(drawingMode) {
-        if (drawingMode is DrawingMode.BucketFill) activePanel = ToolbarPanel.Settings
-        // Entering selection mode (lasso/rect/wand/color/import) closes other panels so
-        // the selection controls are immediately visible
-        if (drawingMode.isSelectionTool()) {
-            activePanel = ToolbarPanel.None
-        }
-    }
-
-    LaunchedEffect(isLazyModeActive) {
-        if (isLazyModeActive) activePanel = ToolbarPanel.Settings
+        if (drawingMode.isSelectionTool()) onActivePanelChange(ToolbarPanel.None)
     }
 
     // Height and opacity both ride springs from the same family, so the fade lands with the
@@ -87,7 +82,21 @@ fun DrawingToolbar(
 
     Surface(
         modifier = modifier
-            .fillMaxWidth()
+            // Collapsed, this is just five buttons - stretching it edge to edge left big
+            // dead margins in portrait. It hugs its row instead, and only takes the full
+            // width when a panel that actually needs it (sliders, swatches) is open.
+            // Caps the open width so landscape doesn't stretch sliders across 700dp of
+            // screen with the controls marooned at either end. Centred by the parent.
+            // Must come before the fill below: fillMaxWidth pins min width to the incoming
+            // max, and a widthIn placed after that has nothing left to constrain.
+            .widthIn(max = 480.dp)
+            .then(
+                if (activePanel == ToolbarPanel.None && !isSelectionMode && !isSelectionClosed) {
+                    Modifier.wrapContentWidth()
+                } else {
+                    Modifier.fillMaxWidth()
+                }
+            )
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .wrapContentHeight()
             // No animateContentSize here: the panels' own expandVertically/shrinkVertically
@@ -106,7 +115,7 @@ fun DrawingToolbar(
                         if (totalDrag > 0f) change.consume()
                     },
                     onDragEnd = {
-                        if (totalDrag > 80f) activePanel = ToolbarPanel.None
+                        if (totalDrag > 80f) onActivePanelChange(ToolbarPanel.None)
                     }
                 )
             },
@@ -139,7 +148,7 @@ fun DrawingToolbar(
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                     ToolToggleButton(
                         selected = activePanel == ToolbarPanel.Brush,
-                        onClick = { activePanel = if (activePanel == ToolbarPanel.Brush) ToolbarPanel.None else ToolbarPanel.Brush },
+                        onClick = { onActivePanelChange(if (activePanel == ToolbarPanel.Brush) ToolbarPanel.None else ToolbarPanel.Brush) },
                         icon = Icons.Rounded.Brush,
                         contentDescription = "Brush presets"
                     )
@@ -150,7 +159,7 @@ fun DrawingToolbar(
                             .size(48.dp)
                             .clip(MaterialTheme.shapes.medium)
                             .semantics { this.selected = activePanel == ToolbarPanel.Color }
-                            .clickable(role = Role.Button) { activePanel = if (activePanel == ToolbarPanel.Color) ToolbarPanel.None else ToolbarPanel.Color },
+                            .clickable(role = Role.Button) { onActivePanelChange(if (activePanel == ToolbarPanel.Color) ToolbarPanel.None else ToolbarPanel.Color) },
                         contentAlignment = Alignment.Center
                     ) {
                         // The swatch is the affordance, so nothing sits on top of it: the
@@ -180,7 +189,7 @@ fun DrawingToolbar(
                 // Settings
                 ToolToggleButton(
                     selected = activePanel == ToolbarPanel.Settings,
-                    onClick = { activePanel = if (activePanel == ToolbarPanel.Settings) ToolbarPanel.None else ToolbarPanel.Settings },
+                    onClick = { onActivePanelChange(if (activePanel == ToolbarPanel.Settings) ToolbarPanel.None else ToolbarPanel.Settings) },
                     icon = Icons.Rounded.Tune,
                     contentDescription = "Tool settings"
                 )
@@ -203,7 +212,7 @@ fun DrawingToolbar(
                 exit = visibilityAnimSpecExit
             ) {
                 QuickBrushPanel(viewModel, onOpenStudio = {
-                    activePanel = ToolbarPanel.None
+                    onActivePanelChange(ToolbarPanel.None)
                     onOpenBrushStudio()
                 })
             }
@@ -214,7 +223,7 @@ fun DrawingToolbar(
                 enter = visibilityAnimSpecEnter,
                 exit = visibilityAnimSpecExit
             ) {
-                ColorPickerContent(viewModel) { activePanel = ToolbarPanel.None }
+                ColorPickerContent(viewModel) { onActivePanelChange(ToolbarPanel.None) }
             }
 
             // Global Settings Panel - Smooth Slide
@@ -248,8 +257,9 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val isSelectionToolActive = drawingMode.isSelectionTool()
 
-    Column {
+    Column(modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+        // This panel swaps between three quite differently sized layouts while staying open.
         when {
             hasFloating -> {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -358,7 +368,7 @@ fun ExtraToolItem(
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         // The Text below is the accessible name, so the icon stays decorative.
         ToolToggleButton(selected = selected, onClick = onClick, icon = icon, contentDescription = null)
-        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
+        Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -620,7 +630,13 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
 
     Column {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        // Rows appear and disappear here as tools change while the panel is already open.
+        // AnimatedVisibility only animates the panel's own show/hide, so without this the
+        // Lazy Radius and Tolerance rows would pop in with no transition.
+        Column(
+            modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             SettingRow("Draw Sensitivity", "${"%.1f".format(cursorSensitivity)}x", cursorSensitivity, { viewModel.setCursorSensitivity(it) }, 0.1f..1.0f)
             
             if (isLazyModeActive) {
@@ -640,7 +656,7 @@ fun SettingRow(label: String, valueLabel: String, value: Float, onValueChange: (
         Column(modifier = Modifier.weight(1f)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(label, style = MaterialTheme.typography.labelSmall)
-                Text(valueLabel, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(valueLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             // No height constraint: Slider's own 48dp box is the thumb's touch target,
             // and clamping it to 24dp made the thumb hard to grab vertically.

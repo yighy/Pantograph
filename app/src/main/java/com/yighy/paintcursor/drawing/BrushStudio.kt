@@ -97,8 +97,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                     ) {
                         Text(
                             "Brush Studio",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold
+                            style = MaterialTheme.typography.headlineSmall
                         )
                         // Current color at a glance (the preview stroke uses it)
                         Box(
@@ -189,7 +188,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Follow Direction", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Follow Direction", style = MaterialTheme.typography.titleMedium)
                             Text("Rotate brush along path", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = uiState.brushRotationDynamics, onCheckedChange = { viewModel.setRotationDynamics(it) })
@@ -200,7 +199,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("Velocity Dynamics", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                            Text("Velocity Dynamics", style = MaterialTheme.typography.titleMedium)
                             Text("React to stroke speed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(checked = uiState.velocityEnabled, onCheckedChange = { viewModel.setVelocityEnabled(it) })
@@ -344,7 +343,6 @@ fun AssetPickerCard(
                 Text(
                     label,
                     style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
                     color = if (bitmap != null) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -355,7 +353,10 @@ fun AssetPickerCard(
                     color = MaterialTheme.colorScheme.errorContainer,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(6.dp)
+                        // Stays a 22dp badge visually, but reserves the full 48dp of touch
+                        // area around itself. The explicit padding is gone because that
+                        // reserved box already insets the badge from the tile corner.
+                        .minimumInteractiveComponentSize()
                         .size(22.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -377,7 +378,7 @@ fun StudioSection(title: String, icon: androidx.compose.ui.graphics.vector.Image
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(horizontal = 4.dp)) {
             Icon(icon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
         }
         Surface(
             shape = MaterialTheme.shapes.medium,
@@ -484,7 +485,8 @@ fun DrawingSettingRow(label: String, valueLabel: String, value: Float, onValueCh
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(modifier = Modifier.weight(1f)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(label, style = MaterialTheme.typography.labelSmall); Text(valueLabel, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text(label, style = MaterialTheme.typography.labelSmall)
+                Text(valueLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
             }
             Slider(value = value, onValueChange = onValueChange, valueRange = range)
         }

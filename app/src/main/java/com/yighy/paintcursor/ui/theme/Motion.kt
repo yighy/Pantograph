@@ -20,6 +20,9 @@ object MotionTokens {
     /** Tint/background cross-fades on selection or hover state changes. */
     val colorTransition: FiniteAnimationSpec<Color> = spring(dampingRatio = 0.85f, stiffness = 400f)
 
+    /** [colorTransition]'s pacing for things that fade via alpha rather than a Color swap. */
+    val colorTransitionFloat: FiniteAnimationSpec<Float> = spring(dampingRatio = 0.85f, stiffness = 400f)
+
     /** Scale pulse for activation feedback (FAB pen-down, gate-active state). */
     val pulse: FiniteAnimationSpec<Float> = spring(dampingRatio = 0.7f, stiffness = 450f)
 

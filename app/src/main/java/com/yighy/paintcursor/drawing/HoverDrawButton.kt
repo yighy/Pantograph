@@ -22,6 +22,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
@@ -32,7 +33,13 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.*
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -77,10 +84,20 @@ fun HoverDrawButton(
     val gateOpacity by remember(viewModel) { viewModel.uiState.map { it.brushOpacity }.distinctUntilChanged() }.collectAsState(1f)
     val gateFlow by remember(viewModel) { viewModel.uiState.map { it.brushFlow }.distinctUntilChanged() }.collectAsState(1f)
 
+    // Scale() grows the FAB about its centre, so the pen-down pulse eats into the gap on
+    // every side. The satellite spacing below is derived from this same constant rather
+    // than guessed, so the two can't drift apart.
+    val fabPressScale = 1.15f
     val scale by animateFloatAsState(
-        targetValue = if (isPenDown) 1.15f else 1f,
+        targetValue = if (isPenDown) fabPressScale else 1f,
         animationSpec = MotionTokens.pulse
     )
+
+    // The satellite gates are worked blind - your own finger covers the bubbles - so every
+    // threshold the gesture code already tracks (gate engaged, column changed, dead zone
+    // cleared) gets a matching tick. LongPress marks committing to something, TextHandleMove
+    // is the light per-step tick.
+    val haptics = LocalHapticFeedback.current
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenWidth = constraints.maxWidth.toFloat()
@@ -136,7 +153,10 @@ fun HoverDrawButton(
                             if (gestureMode == 0) {
                                 if (fingerDrag.getDistance() > fabDragThreshold) {
                                     if (cursorDist < 10.dp.toPx()) {
-                                        gestureMode = 1 
+                                        gestureMode = 1
+                                        // This branch silently discards the stroke you may
+                                        // have thought you were drawing, so say so.
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         viewModel.setPenDown(false)
                                         // Only abort stroke if we were actually drawing (not picking color or selecting)
                                         val isSelectionMode = drawingMode.isSelectionTool()
@@ -211,7 +231,10 @@ fun HoverDrawButton(
         // bottom row eraser off/on.
         val miniThicknessDp = (fabSizeSetting * 0.42f).coerceIn(26f, 40f)
         val miniThicknessPx = with(density) { miniThicknessDp.dp.toPx() }
-        val gapPx = with(density) { 6.dp.toPx() }
+        // 6dp of breathing room measured from the FAB at its *pressed* size, not its resting
+        // size: the pulse expands it by half the scale factor on each side, which at large
+        // FAB settings was more than the whole resting gap.
+        val gapPx = with(density) { 6.dp.toPx() } + fabSizePx * (fabPressScale - 1f) / 2f
         val satShape = RoundedCornerShape(30)
 
         val fabX = localX.coerceIn(0f, (screenWidth - fabSizePx).coerceAtLeast(0f))
@@ -223,10 +246,38 @@ fun HoverDrawButton(
         val bottomSatX = fabX
         val bottomSatY = if (fabY + fabSizePx + gapPx + miniThicknessPx <= screenHeight) fabY + fabSizePx + gapPx else fabY - gapPx - miniThicknessPx
 
+        // Satellites clear out while the FAB is held: mid-stroke they are dead weight beside
+        // the cursor, and a stray second finger landing on one would change the brush in the
+        // middle of a line.
+        //
+        // Faded rather than removed from the tree. AnimatedVisibility would tear down the
+        // gesture detectors on every single stroke and rebuild them on release - a coroutine
+        // cancelled at the wrong moment strands the gate's "active" flag, and a detector that
+        // reattaches while a finger is already down is asking for trouble. The nodes stay put
+        // for the whole session; they simply refuse the gesture while hidden, so there is no
+        // invisible target either.
+        val satellitesVisible = !isPenDown
+        val satelliteAlpha by animateFloatAsState(
+            targetValue = if (satellitesVisible) 1f else 0f,
+            animationSpec = if (satellitesVisible) MotionTokens.expressiveEnter else MotionTokens.expressiveExit,
+            label = "satelliteAlpha"
+        )
+        val satelliteScale by animateFloatAsState(
+            targetValue = if (satellitesVisible) 1f else 0.7f,
+            animationSpec = if (satellitesVisible) MotionTokens.expressiveEnter else MotionTokens.expressiveExit,
+            label = "satelliteScale"
+        )
+
         // ---- Right satellite: brush settings gate ----
         var brushGateActive by remember { mutableStateOf(false) }
         var brushGateParam by remember { mutableIntStateOf(0) }
         var brushGateValue by remember { mutableFloatStateOf(0f) }
+        // Live finger position, so the readout can ride above the hand instead of waiting
+        // under it. Kept in the satellite's own coordinates and converted to screen space at
+        // the call site: pointerInput's block doesn't restart when the FAB moves, so a
+        // screen-space value captured in there would still be relative to the old position.
+        var brushGateFingerLocalX by remember { mutableFloatStateOf(0f) }
+        var brushGateFingerLocalY by remember { mutableFloatStateOf(0f) }
 
         // Springy, MD3-Expressive feedback on activation: the satellite pulses and its
         // colors ease across instead of snapping, matching the FAB's own pen-down spring
@@ -243,17 +294,45 @@ fun HoverDrawButton(
             animationSpec = MotionTokens.colorTransition
         )
 
+        // The drag gesture below is unreachable with a screen reader, so the same four
+        // parameters are also exposed as discrete nudge actions. 10% of each parameter's own
+        // range per invocation: enough to be worth the gesture, fine enough to land on a
+        // usable value.
+        val brushGateActions = BrushGateParam.values().flatMap { param ->
+            listOf(true, false).map { increase ->
+                CustomAccessibilityAction(
+                    label = "${if (increase) "Increase" else "Decrease"} ${param.label.lowercase()}"
+                ) {
+                    val current = param.read(viewModel.uiState.value)
+                    val stepSize = (param.max - param.min) / 10f
+                    val next = (current + if (increase) stepSize else -stepSize)
+                        .coerceIn(param.min, param.max)
+                    param.apply(viewModel, next)
+                    true
+                }
+            }
+        }
+
         Box(
             modifier = Modifier
                 .offset { IntOffset(rightSatX.roundToInt(), rightSatY.roundToInt()) }
-                .scale(brushGateScale)
+                .scale(brushGateScale * satelliteScale)
+                .alpha(satelliteAlpha)
                 .size(miniThicknessDp.dp, fabSizeSetting.dp)
+                .semantics {
+                    contentDescription = "Brush levels"
+                    customActions = brushGateActions
+                }
                 .shadow(4.dp, satShape)
                 .clip(satShape)
                 .background(brushGateBg)
                 .pointerInput(satelliteGateSensitivity) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
+                        // Read live rather than through a captured value: this block is not
+                        // rebuilt when the FAB is pressed. Hidden means inert - bail out
+                        // without consuming, so the touch is nobody's business.
+                        if (viewModel.uiState.value.isPenDown) return@awaitEachGesture
                         down.consume()
                         val params = BrushGateParam.values()
                         val colStepPx = 56.dp.toPx()
@@ -274,21 +353,24 @@ fun HoverDrawButton(
                         var anchorY = down.position.y
                         var anchorValue = params[index].read(viewModel.uiState.value)
                         brushGateValue = anchorValue
+                        brushGateFingerLocalX = down.position.x
+                        brushGateFingerLocalY = down.position.y
                         brushGateActive = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        // Tracks dead-zone state so the "value is live now" tick fires on the
+                        // crossing, not on every frame beyond it.
+                        var inDeadZone = true
+                        // See the mode gate below: cancellation must not strand this flag.
+                        try {
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.find { it.id == down.id } ?: break
                             if (!change.pressed) break
                             change.consume()
+                            brushGateFingerLocalX = change.position.x
+                            brushGateFingerLocalY = change.position.y
                             val drag = change.position - down.position
-                            val relPos = drag.x / colStepPx
-                            val upperBound = committedRel + 0.5f + colHysteresisPx / colStepPx
-                            val lowerBound = committedRel - 0.5f - colHysteresisPx / colStepPx
-                            val newRel = when {
-                                relPos > upperBound -> committedRel + 1
-                                relPos < lowerBound -> committedRel - 1
-                                else -> committedRel
-                            }
+                            val newRel = GateMath.nextColumn(committedRel, drag.x, colStepPx, colHysteresisPx)
                             val newIndex = (startIndex + newRel).coerceIn(0, params.size - 1)
                             if (newIndex != index) {
                                 // Gear change: re-anchor the vertical axis on the new param's
@@ -298,40 +380,76 @@ fun HoverDrawButton(
                                 brushGateParam = newIndex
                                 anchorY = change.position.y
                                 anchorValue = params[index].read(viewModel.uiState.value)
+                                // Makes the hysteresis perceptible: one detent per column.
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                inDeadZone = true
                             }
                             val p = params[index]
-                            val rawDelta = anchorY - change.position.y
-                            val effectiveDelta = when {
-                                rawDelta > deadZonePx -> rawDelta - deadZonePx
-                                rawDelta < -deadZonePx -> rawDelta + deadZonePx
-                                else -> 0f
+                            if (GateMath.effectiveDelta(anchorY - change.position.y, deadZonePx) == 0f) {
+                                inDeadZone = true
+                            } else if (inDeadZone) {
+                                inDeadZone = false
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             }
-                            // Progressive response: the finger's own travel distance IS the
-                            // live sensitivity control. Right after the dead zone (small
-                            // movements, fine adjustments) the value barely moves; pulling
-                            // further away ramps the response up to full speed. This is what
-                            // made e.g. Size "climb too fast" before - a flat linear mapping
-                            // makes the very first millimeters of drag move it just as fast as
-                            // the rest of the sweep. Exponent >1 = slow start, fast finish;
-                            // full range is still reached exactly at the same travel distance.
-                            val t = (effectiveDelta / travelPx).coerceIn(-1f, 1f)
-                            val shaped = sign(t) * abs(t).pow(1.8f)
-                            val value = (anchorValue + shaped * (p.max - p.min))
-                                .coerceIn(p.min, p.max)
-                            brushGateValue = value
-                            p.apply(viewModel, value)
+                            val stepped = GateMath.step(
+                                anchorValue = anchorValue,
+                                anchorPos = anchorY,
+                                currentPos = change.position.y,
+                                min = p.min,
+                                max = p.max,
+                                deadZonePx = deadZonePx,
+                                travelPx = travelPx
+                            )
+                            // Fed straight back in: these only move when the value is pinned
+                            // against a limit, which is what keeps a reversal responsive.
+                            anchorValue = stepped.anchorValue
+                            anchorY = stepped.anchorPos
+                            brushGateValue = stepped.value
+                            p.apply(viewModel, stepped.value)
                         }
-                        brushGateActive = false
+                        } finally {
+                            brushGateActive = false
+                        }
                     }
                 },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                Icons.Rounded.Brush,
-                contentDescription = "Brush settings",
-                tint = brushGateIconTint,
-                modifier = Modifier.size((miniThicknessDp * 0.62f).dp)
+            // Chevrons flanking the icon: a plain centred glyph reads as "tap me", which is
+            // the one thing this control does not do. They sit on the pill's long axis, the
+            // axis that carries the value, and dim out while the gate is engaged so they
+            // don't compete with the bubbles.
+            val brushHintAlpha by animateFloatAsState(
+                targetValue = if (brushGateActive) 0f else 0.55f,
+                animationSpec = MotionTokens.colorTransitionFloat,
+                label = "brushGateHint"
             )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Rounded.KeyboardArrowUp,
+                    contentDescription = null,
+                    tint = brushGateIconTint.copy(alpha = brushHintAlpha),
+                    modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
+                )
+                // Equalizer, not Brush: the toolbar's Brush button already owns that glyph
+                // for the preset list. This satellite is a live level control, and stacked
+                // bars say "levels" while echoing the vertical drag that works it.
+                Icon(
+                    Icons.Rounded.Equalizer,
+                    // Named by the enclosing Box's semantics, so the glyph stays decorative.
+                    contentDescription = null,
+                    tint = brushGateIconTint,
+                    modifier = Modifier.size((miniThicknessDp * 0.62f).dp)
+                )
+                Icon(
+                    Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = brushGateIconTint.copy(alpha = brushHintAlpha),
+                    modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
+                )
+            }
         }
 
         // ---- Bottom satellite: drawing-mode gate ----
@@ -339,6 +457,8 @@ fun HoverDrawButton(
         val isEraserMode = drawingMode is DrawingMode.Eraser || drawingMode is DrawingMode.StraightLineEraser
         var modeGateActive by remember { mutableStateOf(false) }
         var modeGateCell by remember { mutableIntStateOf(-1) }
+        var modeGateFingerLocalX by remember { mutableFloatStateOf(0f) }
+        var modeGateFingerLocalY by remember { mutableFloatStateOf(0f) }
 
         val modeGateScale by animateFloatAsState(
             targetValue = if (modeGateActive) 1.08f else 1f,
@@ -361,35 +481,84 @@ fun HoverDrawButton(
             animationSpec = MotionTokens.colorTransition
         )
 
+        // Same story as the brush gate: the 2x2 drag has no screen-reader equivalent, so each
+        // cell gets a named action. These set the mode outright rather than toggling, so the
+        // announced label always matches what actually happens.
+        val modeGateActions = listOf(
+            CustomAccessibilityAction("Freehand") {
+                viewModel.setDrawingMode(if (isEraserMode) DrawingMode.Eraser else DrawingMode.Freehand); true
+            },
+            CustomAccessibilityAction("Straight line") {
+                viewModel.setDrawingMode(if (isEraserMode) DrawingMode.StraightLineEraser else DrawingMode.StraightLine); true
+            },
+            CustomAccessibilityAction("Eraser off") {
+                viewModel.setDrawingMode(if (isLineMode) DrawingMode.StraightLine else DrawingMode.Freehand); true
+            },
+            CustomAccessibilityAction("Eraser on") {
+                viewModel.setDrawingMode(if (isLineMode) DrawingMode.StraightLineEraser else DrawingMode.Eraser); true
+            }
+        )
+
         Box(
             modifier = Modifier
                 .offset { IntOffset(bottomSatX.roundToInt(), bottomSatY.roundToInt()) }
-                .scale(modeGateScale)
+                .scale(modeGateScale * satelliteScale)
+                .alpha(satelliteAlpha)
                 .size(fabSizeSetting.dp, miniThicknessDp.dp)
+                .semantics {
+                    contentDescription = when {
+                        isEraserMode && isLineMode -> "Drawing mode: straight line eraser"
+                        isEraserMode -> "Drawing mode: eraser"
+                        isLineMode -> "Drawing mode: straight line"
+                        else -> "Drawing mode: freehand"
+                    }
+                    customActions = modeGateActions
+                }
                 .shadow(4.dp, satShape)
                 .clip(satShape)
                 .background(modeGateBg)
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
+                        if (viewModel.uiState.value.isPenDown) return@awaitEachGesture
                         down.consume()
                         val deadZonePx = 18.dp.toPx()
                         modeGateCell = -1
+                        modeGateFingerLocalX = down.position.x
+                        modeGateFingerLocalY = down.position.y
                         modeGateActive = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        // This coroutine is cancellable: hiding the satellites disposes
+                        // the node it runs in, and a cancel between here and the reset
+                        // below would strand modeGateActive at true - leaving the panel
+                        // on screen with nothing holding it.
+                        try {
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.find { it.id == down.id } ?: break
                             if (!change.pressed) break
                             change.consume()
+                            modeGateFingerLocalX = change.position.x
+                            modeGateFingerLocalY = change.position.y
                             val drag = change.position - down.position
-                            modeGateCell = if (drag.getDistance() < deadZonePx) -1 else {
+                            val newCell = if (drag.getDistance() < deadZonePx) -1 else {
                                 (if (drag.y < 0f) 0 else 2) + (if (drag.x < 0f) 0 else 1)
                             }
+                            // Ticks on the way back to neutral too, so you can feel that
+                            // releasing here would apply nothing.
+                            if (newCell != modeGateCell) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                            modeGateCell = newCell
+                        }
+                        } finally {
+                            modeGateActive = false
                         }
                         val cell = modeGateCell
-                        modeGateActive = false
                         modeGateCell = -1
                         if (cell >= 0) {
+                            // Unlike the brush gate, this one only lands on release - confirm it.
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             val cur = viewModel.uiState.value.drawingMode
                             val line = cur is DrawingMode.StraightLine || cur is DrawingMode.StraightLineEraser
                             val eraser = cur is DrawingMode.Eraser || cur is DrawingMode.StraightLineEraser
@@ -406,12 +575,36 @@ fun HoverDrawButton(
                 },
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = if (isEraserMode) EraserIcon else if (isLineMode) Icons.Rounded.HorizontalRule else Icons.Rounded.Gesture,
-                contentDescription = "Drawing mode",
-                tint = modeGateIconTint,
-                modifier = Modifier.size((miniThicknessDp * 0.62f).dp)
+            // Same affordance as the brush gate, turned along this pill's own axis.
+            val modeHintAlpha by animateFloatAsState(
+                targetValue = if (modeGateActive) 0f else 0.55f,
+                animationSpec = MotionTokens.colorTransitionFloat,
+                label = "modeGateHint"
             )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Rounded.KeyboardArrowLeft,
+                    contentDescription = null,
+                    tint = modeGateIconTint.copy(alpha = modeHintAlpha),
+                    modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
+                )
+                Icon(
+                    imageVector = if (isEraserMode) EraserIcon else if (isLineMode) Icons.Rounded.HorizontalRule else Icons.Rounded.Gesture,
+                    // Named by the enclosing Box's semantics, so the glyph stays decorative.
+                    contentDescription = null,
+                    tint = modeGateIconTint,
+                    modifier = Modifier.size((miniThicknessDp * 0.62f).dp)
+                )
+                Icon(
+                    Icons.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = modeGateIconTint.copy(alpha = modeHintAlpha),
+                    modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
+                )
+            }
         }
 
         // ---- Overlays (drawn above everything, no pointer input: the satellite owns the gesture) ----
@@ -430,10 +623,8 @@ fun HoverDrawButton(
                 currentValues = remember(gateSize, gateSoftness, gateOpacity, gateFlow) {
                     listOf(gateSize, gateSoftness, gateOpacity, gateFlow)
                 },
-                anchorX = rightSatX + miniThicknessPx / 2f,
-                anchorY = rightSatY,
-                satHeightPx = fabSizePx,
-                gapPx = gapPx,
+                fingerX = rightSatX + brushGateFingerLocalX,
+                fingerY = rightSatY + brushGateFingerLocalY,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight
             )
@@ -448,8 +639,8 @@ fun HoverDrawButton(
                 hoveredCell = modeGateCell,
                 isLineMode = isLineMode,
                 isEraserMode = isEraserMode,
-                centerX = bottomSatX + fabSizePx / 2f,
-                centerY = bottomSatY + miniThicknessPx / 2f,
+                fingerX = bottomSatX + modeGateFingerLocalX,
+                fingerY = bottomSatY + modeGateFingerLocalY,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight
             )
@@ -493,10 +684,8 @@ private fun BrushGatePanel(
     paramIndex: Int,
     value: Float,
     currentValues: List<Float>,
-    anchorX: Float,
-    anchorY: Float,
-    satHeightPx: Float,
-    gapPx: Float,
+    fingerX: Float,
+    fingerY: Float,
     screenWidth: Float,
     screenHeight: Float
 ) {
@@ -505,9 +694,14 @@ private fun BrushGatePanel(
     val panelH = 56.dp
     val panelWPx = with(density) { panelW.toPx() }
     val panelHPx = with(density) { panelH.toPx() }
-    val px = (anchorX - panelWPx / 2f).coerceIn(0f, (screenWidth - panelWPx).coerceAtLeast(0f))
-    val above = anchorY - panelHPx - gapPx * 2
-    val py = (if (above >= 0f) above else anchorY + satHeightPx + gapPx * 2)
+    // Clearance for the fingertip and the knuckle behind it.
+    val fingerGapPx = with(density) { 72.dp.toPx() }
+    // Rides the finger on both axes. Horizontal travel is clamped to the screen, and since
+    // the panel is 260dp wide there is little room to move on a phone - expect it to track
+    // through the middle of a sweep and sit against the edge at the outer columns.
+    val px = (fingerX - panelWPx / 2f).coerceIn(0f, (screenWidth - panelWPx).coerceAtLeast(0f))
+    val above = fingerY - panelHPx - fingerGapPx
+    val py = (if (above >= 0f) above else fingerY + fingerGapPx)
         .coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
 
     // Staggered pop-in: each bubble starts hidden and flips visible a beat after the
@@ -557,7 +751,6 @@ private fun BrushGatePanel(
                             Text(
                                 p.label,
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Medium,
                                 color = if (selected) MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                             )
                             Text(
@@ -584,8 +777,8 @@ private fun ModeGatePanel(
     hoveredCell: Int,
     isLineMode: Boolean,
     isEraserMode: Boolean,
-    centerX: Float,
-    centerY: Float,
+    fingerX: Float,
+    fingerY: Float,
     screenWidth: Float,
     screenHeight: Float
 ) {
@@ -594,8 +787,15 @@ private fun ModeGatePanel(
     val panelH = 100.dp
     val panelWPx = with(density) { panelW.toPx() }
     val panelHPx = with(density) { panelH.toPx() }
-    val px = (centerX - panelWPx / 2f).coerceIn(0f, (screenWidth - panelWPx).coerceAtLeast(0f))
-    val py = (centerY - panelHPx / 2f).coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
+    val fingerGapPx = with(density) { 56.dp.toPx() }
+    // Tracks the finger on both axes, sitting clear of it. The highlighted cell still comes
+    // from the drag direction measured off the touch-down point, so what this grid shows is
+    // which mode a release would pick - it is a readout that follows the hand, not a set of
+    // fixed targets to steer onto.
+    val px = (fingerX - panelWPx / 2f).coerceIn(0f, (screenWidth - panelWPx).coerceAtLeast(0f))
+    val above = fingerY - panelHPx - fingerGapPx
+    val py = (if (above >= 0f) above else fingerY + fingerGapPx)
+        .coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
 
     // Staggered pop-in, same treatment as BrushGatePanel's bubbles
     val bubbleVisible = remember { mutableStateListOf(false, false, false, false) }

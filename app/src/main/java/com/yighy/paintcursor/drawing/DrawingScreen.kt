@@ -38,7 +38,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -70,6 +69,9 @@ fun DrawingScreen(
     var showBrushStudio by remember { mutableStateOf(false) }
     var showLayersPanel by remember { mutableStateOf(false) }
     var editingLayerId by remember { mutableStateOf<Long?>(null) }
+    // Lives here rather than inside the toolbar because the tool menu below also needs to
+    // open panels, and a tap is the only reliable trigger for that.
+    var activePanel by remember { mutableStateOf(ToolbarPanel.None) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         uri?.let { viewModel.setReferenceImage(context, it.toString()) }
@@ -121,9 +123,17 @@ fun DrawingScreen(
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = 16.dp, vertical = 32.dp)
                     .padding(bottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding())
-                    .fillMaxWidth(0.95f)
+                    .fillMaxWidth(0.95f),
+                // The toolbar sizes itself now (it hugs its row when collapsed), so it has
+                // to be centred here rather than left to sit at the start edge.
+                contentAlignment = Alignment.BottomCenter
             ) {
-                DrawingToolbar(viewModel = viewModel, onOpenBrushStudio = { showBrushStudio = true })
+                DrawingToolbar(
+                    viewModel = viewModel,
+                    onOpenBrushStudio = { showBrushStudio = true },
+                    activePanel = activePanel,
+                    onActivePanelChange = { activePanel = it }
+                )
             }
             
             // Back Button - Styled EXACTLY the same as top right actions
@@ -161,6 +171,7 @@ fun DrawingScreen(
                     onSelectLayer = { editingLayerId = null },
                     onEditLayer = { editingLayerId = it },
                     onNavigateToSettings = onNavigateToSettings,
+                    onRequestSettingsPanel = { activePanel = ToolbarPanel.Settings },
                     imagePickerLauncher = imagePickerLauncher,
                     layerImportLauncher = layerImportLauncher
                 )
@@ -237,6 +248,8 @@ fun LayersAndActionsSection(
     onSelectLayer: (Long) -> Unit,
     onEditLayer: (Long) -> Unit,
     onNavigateToSettings: () -> Unit,
+    /** Opens the toolbar's Settings panel, for tools whose options live there. */
+    onRequestSettingsPanel: () -> Unit,
     imagePickerLauncher: androidx.activity.result.ActivityResultLauncher<String>,
     layerImportLauncher: androidx.activity.result.ActivityResultLauncher<String>
 ) {
@@ -275,7 +288,12 @@ fun LayersAndActionsSection(
                 // Extra-tools gate (moved from the bottom toolbar to free up its space) with
                 // Fit-to-Screen folded in as a menu item, taking the slot the standalone
                 // Fullscreen button used to occupy
-                ToolsMenuButton(viewModel = viewModel, drawingMode = drawingMode, isLazyModeActive = isLazyModeActive)
+                ToolsMenuButton(
+                    viewModel = viewModel,
+                    drawingMode = drawingMode,
+                    isLazyModeActive = isLazyModeActive,
+                    onRequestSettingsPanel = onRequestSettingsPanel
+                )
 
                 // Vertical Separator
                 Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
@@ -301,12 +319,12 @@ fun LayersAndActionsSection(
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Save Project", fontWeight = FontWeight.Medium) }, 
+                            text = { Text("Save Project") }, 
                             onClick = { viewModel.manualSave(); showMenu = false }, 
                             leadingIcon = { Icon(Icons.Rounded.Save, null, tint = MaterialTheme.colorScheme.primary) }
                         )
                         DropdownMenuItem(
-                            text = { Text("Import Image", fontWeight = FontWeight.Medium) },
+                            text = { Text("Import Image") },
                             onClick = { showImportOptions = !showImportOptions },
                             leadingIcon = { Icon(Icons.Rounded.AddPhotoAlternate, null, tint = MaterialTheme.colorScheme.primary) },
                             trailingIcon = { Icon(if (showImportOptions) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null) }
@@ -326,18 +344,18 @@ fun LayersAndActionsSection(
                             )
                         }
                         DropdownMenuItem(
-                            text = { Text("Export as PNG", fontWeight = FontWeight.Medium) }, 
+                            text = { Text("Export as PNG") }, 
                             onClick = { viewModel.exportProject(context, "png"); showMenu = false }, 
                             leadingIcon = { Icon(Icons.Rounded.IosShare, null, tint = MaterialTheme.colorScheme.primary) }
                         )
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         DropdownMenuItem(
-                            text = { Text("Settings", fontWeight = FontWeight.Medium) },
+                            text = { Text("Settings") },
                             onClick = { onNavigateToSettings(); showMenu = false },
                             leadingIcon = { Icon(Icons.Rounded.Settings, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                         )
                         DropdownMenuItem(
-                            text = { Text("About", fontWeight = FontWeight.Medium) },
+                            text = { Text("About") },
                             onClick = { showAboutDialog = true; showMenu = false },
                             leadingIcon = { Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                         )
@@ -385,7 +403,8 @@ fun LayersAndActionsSection(
 private fun ToolsMenuButton(
     viewModel: DrawingViewModel,
     drawingMode: DrawingMode,
-    isLazyModeActive: Boolean
+    isLazyModeActive: Boolean,
+    onRequestSettingsPanel: () -> Unit
 ) {
     var showTools by remember { mutableStateOf(false) }
     val isBucketFill = drawingMode is DrawingMode.BucketFill
@@ -424,7 +443,7 @@ private fun ToolsMenuButton(
                 modifier = Modifier.padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("View", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("View", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     ExtraToolItem("Fit Screen", false, Icons.Rounded.Fullscreen) {
                         viewModel.requestFitToScreen()
@@ -434,10 +453,14 @@ private fun ToolsMenuButton(
 
                 HorizontalDivider(thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
 
-                Text("Paint", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("Paint", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     ExtraToolItem("Fill", isBucketFill, Icons.Rounded.FormatColorFill) {
+                        // Both of these toggle, so read the outcome before calling: turning a
+                        // tool off must not pop open the panel holding its options.
+                        val turningOn = !isBucketFill
                         viewModel.setBucketFillMode()
+                        if (turningOn) onRequestSettingsPanel()
                         showTools = false
                     }
                     ExtraToolItem("Gradient", drawingMode is DrawingMode.Gradient, Icons.Rounded.Gradient) {
@@ -445,14 +468,16 @@ private fun ToolsMenuButton(
                         showTools = false
                     }
                     ExtraToolItem("Lazy", isLazyModeActive, Icons.Rounded.Stream) {
+                        val turningOn = !isLazyModeActive
                         viewModel.toggleLazyMode()
+                        if (turningOn) onRequestSettingsPanel()
                         showTools = false
                     }
                 }
 
                 HorizontalDivider(thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
 
-                Text("Select", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("Select", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     ExtraToolItem("Lasso", drawingMode is DrawingMode.SelectLasso, Icons.Rounded.Polyline) {
                         viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectLasso) DrawingMode.Freehand else DrawingMode.SelectLasso)
@@ -492,7 +517,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
-        title = { Text("Paint Cursor", fontWeight = FontWeight.Bold) },
+        title = { Text("Paint Cursor") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 versionName?.let {
@@ -513,8 +538,7 @@ fun AboutDialog(onDismiss: () -> Unit) {
                     Text(
                         "View on GitHub",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
