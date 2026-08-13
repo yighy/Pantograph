@@ -431,10 +431,10 @@ fun BrushPresetCard(
                             }
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(onClick = { showRenameDialog = true }) {
-                    Icon(Icons.Rounded.Edit, null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.Edit, "Rename brush", modifier = Modifier.size(18.dp))
                 }
                 IconButton(onClick = { showDeleteConfirm = true }) {
-                    Icon(Icons.Rounded.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.Delete, "Delete brush", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -486,7 +486,7 @@ fun DrawingSettingRow(label: String, valueLabel: String, value: Float, onValueCh
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(label, style = MaterialTheme.typography.labelSmall); Text(valueLabel, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             }
-            Slider(value = value, onValueChange = onValueChange, valueRange = range, modifier = Modifier.height(24.dp))
+            Slider(value = value, onValueChange = onValueChange, valueRange = range)
         }
     }
 }

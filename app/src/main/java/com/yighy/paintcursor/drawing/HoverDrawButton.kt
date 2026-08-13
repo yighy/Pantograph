@@ -181,20 +181,23 @@ fun HoverDrawButton(
                 }
             ) {
                 val iconSize = (fabSizeSetting * 0.45f).dp
+                // Icon and its spoken name travel together as one state, so the announced
+                // label can't lag behind the glyph mid-transition.
                 AnimatedContent(
                     targetState = when {
-                        isEyeDropperMode -> Icons.Rounded.Colorize
-                        drawingMode is DrawingMode.BucketFill -> Icons.Rounded.FormatColorFill
-                        isPenDown -> Icons.Default.Edit 
-                        else -> Icons.Default.TouchApp
+                        isEyeDropperMode -> Icons.Rounded.Colorize to "Eyedropper active"
+                        drawingMode is DrawingMode.BucketFill -> Icons.Rounded.FormatColorFill to "Bucket fill active"
+                        isPenDown -> Icons.Default.Edit to "Drawing"
+                        else -> Icons.Default.TouchApp to "Hold to draw"
                     },
                     transitionSpec = {
                         scaleIn() + fadeIn() togetherWith scaleOut() + fadeOut()
-                    }
-                ) { icon ->
+                    },
+                    label = "fabIcon"
+                ) { (icon, description) ->
                     Icon(
                         imageVector = icon,
-                        contentDescription = null,
+                        contentDescription = description,
                         modifier = Modifier.size(iconSize)
                     )
                 }

@@ -154,8 +154,7 @@ fun HSBSlidersView(
             Slider(
                 value = saturation,
                 onValueChange = { onValueChange(hue, it, value) },
-                valueRange = 0f..1f,
-                modifier = Modifier.height(20.dp)
+                valueRange = 0f..1f
             )
         }
         
@@ -164,8 +163,7 @@ fun HSBSlidersView(
             Slider(
                 value = value,
                 onValueChange = { onValueChange(hue, saturation, it) },
-                valueRange = 0f..1f,
-                modifier = Modifier.height(20.dp)
+                valueRange = 0f..1f
             )
         }
     }

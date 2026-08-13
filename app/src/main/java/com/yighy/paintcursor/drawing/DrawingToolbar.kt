@@ -1,7 +1,6 @@
 package com.yighy.paintcursor.drawing
 
 import androidx.compose.animation.*
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,8 +27,11 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yighy.paintcursor.ui.theme.MotionTokens
@@ -70,16 +72,17 @@ fun DrawingToolbar(
         if (isLazyModeActive) activePanel = ToolbarPanel.Settings
     }
 
-    val toolbarAnimSpec = remember { MotionTokens.panelTransition }
+    // Height and opacity both ride springs from the same family, so the fade lands with the
+    // collapse instead of finishing early and leaving an empty box to close on its own.
     val visibilityAnimSpecEnter = remember {
         expandVertically(
             animationSpec = MotionTokens.panelTransition
-        ) + fadeIn(animationSpec = tween(300))
+        ) + fadeIn(animationSpec = MotionTokens.expressiveEnter)
     }
     val visibilityAnimSpecExit = remember {
         shrinkVertically(
             animationSpec = MotionTokens.panelTransition
-        ) + fadeOut(animationSpec = tween(200))
+        ) + fadeOut(animationSpec = MotionTokens.expressiveExit)
     }
 
     Surface(
@@ -87,7 +90,10 @@ fun DrawingToolbar(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .wrapContentHeight()
-            .animateContentSize(animationSpec = toolbarAnimSpec)
+            // No animateContentSize here: the panels' own expandVertically/shrinkVertically
+            // already animate this height. Running both made the Surface re-spring whatever
+            // height the children hadn't finished animating, which showed up as a jolt at
+            // the end of a collapse.
             // Swipe down anywhere on the toolbar to collapse the open panel.
             // Children (sliders, scrollable lists) consume their own gestures first,
             // so this only sees swipes on non-interactive areas.
@@ -111,8 +117,11 @@ fun DrawingToolbar(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
+            // Deliberately no spacedBy: a collapsing panel keeps its slot in this Column
+            // until its exit transition ends, so the gap reserved for it stayed at full
+            // size the whole way down and then vanished in a single frame. Each panel
+            // brings its own leading divider padding instead.
         ) {
             // Row 1: Tools & Navigation
             // The extra-tools gate (Fill/Gradient/Lazy/Lasso/Rect/Wand/Color) moved to the
@@ -131,7 +140,8 @@ fun DrawingToolbar(
                     ToolToggleButton(
                         selected = activePanel == ToolbarPanel.Brush,
                         onClick = { activePanel = if (activePanel == ToolbarPanel.Brush) ToolbarPanel.None else ToolbarPanel.Brush },
-                        icon = Icons.Rounded.Brush
+                        icon = Icons.Rounded.Brush,
+                        contentDescription = "Brush presets"
                     )
 
                     // Specialized Color Picker Button
@@ -139,30 +149,29 @@ fun DrawingToolbar(
                         modifier = Modifier
                             .size(48.dp)
                             .clip(MaterialTheme.shapes.medium)
-                            .background(if (activePanel == ToolbarPanel.Color) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                            .clickable { activePanel = if (activePanel == ToolbarPanel.Color) ToolbarPanel.None else ToolbarPanel.Color },
+                            .semantics { this.selected = activePanel == ToolbarPanel.Color }
+                            .clickable(role = Role.Button) { activePanel = if (activePanel == ToolbarPanel.Color) ToolbarPanel.None else ToolbarPanel.Color },
                         contentAlignment = Alignment.Center
                     ) {
-                        // The actual color preview
+                        // The swatch is the affordance, so nothing sits on top of it: the
+                        // ColorLens glyph used to cover the middle and leave only a thin
+                        // ring of the actual colour showing. Open state reads as a ring
+                        // around the swatch rather than a fill behind it, which the larger
+                        // swatch would otherwise hide.
+                        val isOpen = activePanel == ToolbarPanel.Color
                         Box(
                             modifier = Modifier
-                                .size(28.dp)
+                                .size(34.dp)
                                 .clip(CircleShape)
                                 .background(selectedColor)
                                 .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    width = if (isOpen) 2.dp else 1.dp,
+                                    color = if (isOpen) MaterialTheme.colorScheme.primary
+                                            else MaterialTheme.colorScheme.outlineVariant,
                                     shape = CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.ColorLens,
-                                contentDescription = null,
-                                tint = if (selectedColor.luminance() > 0.4f) Color.Black else Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
+                                )
+                                .semantics { contentDescription = "Colour picker" }
+                        )
                     }
                 }
 
@@ -172,7 +181,8 @@ fun DrawingToolbar(
                 ToolToggleButton(
                     selected = activePanel == ToolbarPanel.Settings,
                     onClick = { activePanel = if (activePanel == ToolbarPanel.Settings) ToolbarPanel.None else ToolbarPanel.Settings },
-                    icon = Icons.Rounded.Tune
+                    icon = Icons.Rounded.Tune,
+                    contentDescription = "Tool settings"
                 )
 
                 ToolbarSeparator()
@@ -346,7 +356,8 @@ fun ExtraToolItem(
     onClick: () -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        ToolToggleButton(selected = selected, onClick = onClick, icon = icon)
+        // The Text below is the accessible name, so the icon stays decorative.
+        ToolToggleButton(selected = selected, onClick = onClick, icon = icon, contentDescription = null)
         Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Medium)
     }
 }
@@ -368,6 +379,9 @@ fun ToolToggleButton(
     selected: Boolean,
     onClick: () -> Unit,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    // Null only where a visible text label already names the button (see ExtraToolItem);
+    // otherwise this is the button's only name for screen readers.
+    contentDescription: String?,
     selectedColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     selectedContainerColor: Color = MaterialTheme.colorScheme.primaryContainer
 ) {
@@ -375,7 +389,10 @@ fun ToolToggleButton(
         modifier = Modifier
             .size(48.dp)
             .clip(MaterialTheme.shapes.medium)
-            .clickable(onClick = onClick),
+            // Exposed as a selectable button so TalkBack announces the open/closed state
+            // of the panel this toggle controls, not just its name.
+            .semantics { this.selected = selected }
+            .clickable(onClick = onClick, role = Role.Button),
         contentAlignment = Alignment.Center
     ) {
         if (selected) {
@@ -387,7 +404,7 @@ fun ToolToggleButton(
         }
         Icon(
             imageVector = icon,
-            contentDescription = null,
+            contentDescription = contentDescription,
             tint = if (selected) selectedColor else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(24.dp)
         )

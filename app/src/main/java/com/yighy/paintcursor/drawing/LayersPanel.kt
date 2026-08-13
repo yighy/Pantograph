@@ -99,8 +99,8 @@ fun LayerOptionsPanel(
                     )
                     Icon(Icons.Rounded.Edit, contentDescription = "Rename layer", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, "Close layer options", modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -115,8 +115,7 @@ fun LayerOptionsPanel(
                 Slider(
                     value = layer.opacity,
                     onValueChange = { viewModel.setLayerOpacity(layer, it) },
-                    onValueChangeFinished = { viewModel.persistLayerOpacity(layer.id) },
-                    modifier = Modifier.height(24.dp)
+                    onValueChangeFinished = { viewModel.persistLayerOpacity(layer.id) }
                 )
             }
 
@@ -172,7 +171,7 @@ fun LayerOptionsPanel(
                     modifier = Modifier.weight(1f),
                     shape = MaterialTheme.shapes.medium
                 ) {
-                    Icon(Icons.Rounded.ArrowDownward, null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.ArrowDownward, "Move layer down", modifier = Modifier.size(18.dp))
                 }
                 OutlinedIconButton(
                     onClick = { viewModel.reorderLayers(idx, idx + 1) },
@@ -180,7 +179,7 @@ fun LayerOptionsPanel(
                     modifier = Modifier.weight(1f),
                     shape = MaterialTheme.shapes.medium
                 ) {
-                    Icon(Icons.Rounded.ArrowUpward, null, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Rounded.ArrowUpward, "Move layer up", modifier = Modifier.size(18.dp))
                 }
             }
         }
@@ -221,6 +220,9 @@ fun SmallActionChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     label: String? = null,
+    // Spoken name for the icon-only variant, where there's no visible label to read.
+    // Defaults to [label] so the labelled variant needs nothing extra.
+    contentDescription: String? = label,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
     contentColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
 ) {
@@ -241,7 +243,7 @@ fun SmallActionChip(
             }
         } else {
             Box(contentAlignment = Alignment.Center) {
-                Icon(icon, null, modifier = Modifier.size(20.dp), tint = contentColor)
+                Icon(icon, contentDescription, modifier = Modifier.size(20.dp), tint = contentColor)
             }
         }
     }
@@ -288,8 +290,8 @@ fun FloatingLayersPanel(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            IconButton(onClick = onAddLayer, modifier = Modifier.size(40.dp)) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            IconButton(onClick = onAddLayer) {
+                Icon(Icons.Default.Add, contentDescription = "Add layer", tint = MaterialTheme.colorScheme.primary)
             }
             
             HorizontalDivider(thickness = 0.5.dp)

@@ -227,20 +227,21 @@ fun FloatingReferenceImage(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(32.dp)
+                    // 48dp so the title bar can host full-size touch targets: minimize and
+                    // close sat 4dp apart at 24dp each, where a sloppy tap dismissed the
+                    // reference instead of collapsing it.
+                    .height(48.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
                     .pointerInput(Unit) { detectTapGestures(onDoubleTap = { resetTransform() }) },
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onMinimize, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Rounded.Remove, contentDescription = "Minimize", modifier = Modifier.size(16.dp))
+                IconButton(onClick = onMinimize) {
+                    Icon(Icons.Rounded.Remove, contentDescription = "Minimize", modifier = Modifier.size(18.dp))
                 }
-                Spacer(Modifier.width(4.dp))
-                IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(16.dp))
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", modifier = Modifier.size(18.dp))
                 }
-                Spacer(Modifier.width(4.dp))
             }
             AsyncImage(
                 model = reference.uri,
