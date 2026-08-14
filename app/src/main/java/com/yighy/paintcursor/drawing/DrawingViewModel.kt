@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.yighy.paintcursor.data.BrushFolderEntity
 import com.yighy.paintcursor.data.LayerEntity
 import com.yighy.paintcursor.data.ProjectRepository
 import com.yighy.paintcursor.data.PreferenceManager
@@ -34,6 +35,13 @@ class DrawingViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DrawingState())
     val uiState: StateFlow<DrawingState> = _uiState.asStateFlow()
+
+    // Tips and texture masks used by *saved presets*, keyed by uri. State only ever holds the
+    // active brush's assets, so without this a preset's thumbnail had to fall back to the
+    // default round stamp and misrepresented every custom-tip brush in the list. Preloaded off
+    // the brush list, then read synchronously while rendering a thumbnail.
+    private val presetTipCache = mutableMapOf<String, Bitmap>()
+    private val presetMaskCache = mutableMapOf<String, Bitmap>()
 
     private val layerBitmaps = mutableMapOf<Long, Bitmap>()
     private var strokeBitmap: Bitmap? = null
@@ -134,10 +142,6 @@ class DrawingViewModel(
             .onEach { tolerance -> _uiState.update { it.copy(fillTolerance = tolerance) } }
             .launchIn(viewModelScope)
 
-        preferenceManager.rotationDynamics
-            .onEach { enabled -> _uiState.update { it.copy(brushRotationDynamics = enabled) } }
-            .launchIn(viewModelScope)
-
         preferenceManager.rotationJitter
             .onEach { jitter -> _uiState.update { it.copy(brushRotationJitter = jitter) } }
             .launchIn(viewModelScope)
@@ -148,6 +152,18 @@ class DrawingViewModel(
 
         preferenceManager.velocityFlow
             .onEach { amount -> _uiState.update { it.copy(velocityFlowAmount = amount) } }
+            .launchIn(viewModelScope)
+
+        preferenceManager.scatterJitter
+            .onEach { amount -> _uiState.update { it.copy(scatterJitter = amount) } }
+            .launchIn(viewModelScope)
+
+        preferenceManager.flowJitter
+            .onEach { amount -> _uiState.update { it.copy(flowJitter = amount) } }
+            .launchIn(viewModelScope)
+
+        preferenceManager.rotationFollow
+            .onEach { amount -> _uiState.update { it.copy(rotationFollow = amount) } }
             .launchIn(viewModelScope)
 
         preferenceManager.velocityScatter
@@ -212,9 +228,11 @@ class DrawingViewModel(
                     brushSmoothing = project.lastBrushSmoothing,
                     selectedColor = Color(project.lastBrushColor),
                     brushRotation = project.lastBrushRotation,
-                    brushRotationDynamics = project.lastBrushRotationDynamics,
                     brushRotationJitter = project.lastBrushRotationJitter,
                     sizeJitter = project.lastSizeJitter,
+                    scatterJitter = project.lastScatterJitter,
+                    flowJitter = project.lastFlowJitter,
+                    rotationFollow = project.lastRotationFollow,
                     brushTipUri = project.lastBrushTipUri,
                     brushTextureUri = project.lastBrushTextureUri,
                     cursorSensitivity = project.lastCursorSensitivity
@@ -275,17 +293,32 @@ class DrawingViewModel(
                             spacing = b.spacing,
                             smoothing = b.smoothing,
                             rotation = b.rotation,
-                            rotationDynamics = b.rotationDynamics,
                             rotationJitter = b.rotationJitter,
                             sizeJitter = b.sizeJitter,
+                            scatterJitter = b.scatterJitter,
+                            flowJitter = b.flowJitter,
+                            rotationFollow = b.rotationFollow,
                             tipUri = b.tipUri,
                             textureUri = b.textureUri,
                             velocityEnabled = b.velocityEnabled,
                             velocitySize = b.velocitySize,
                             velocityFlow = b.velocityFlow,
-                            velocityScatter = b.velocityScatter
+                            velocityScatter = b.velocityScatter,
+                            folderId = b.folderId
                         )
                     }) }
+                }
+            }
+
+            launch {
+                repository.allCustomBrushes.collect { brushes -> preloadPresetAssets(brushes) }
+            }
+
+            launch {
+                repository.allBrushFolders.collect { folders ->
+                    _uiState.update { state ->
+                        state.copy(brushFolders = folders.map { BrushFolder(it.id, it.name) })
+                    }
                 }
             }
         }
@@ -535,7 +568,8 @@ class DrawingViewModel(
         // same perceptual strength (x3 vs /3). Flow saturates at fully opaque, so positive
         // values are only visible when the base flow is below 100%.
         val velocityFlowFactor = 3f.pow(state.velocityFlowAmount * currentVelocityNorm)
-        sharedPaint.alpha = (state.brushFlow * velocityFlowFactor * 255).toInt().coerceIn(0, 255)
+        val baseFlow = state.brushFlow * velocityFlowFactor
+        sharedPaint.alpha = (baseFlow * 255).toInt().coerceIn(0, 255)
         
         // Use SRC_OVER even for eraser here, we are building the "stroke mask"
         sharedPaint.xfermode = null
@@ -563,12 +597,36 @@ class DrawingViewModel(
                 val px = from.x + (to.x - from.x) * t
                 val py = from.y + (to.y - from.y) * t
                 
-                val jitter = if (state.sizeJitter > 0f) (1f - (localRandom.nextFloat() * state.sizeJitter)) else 1f
+                // Was one-sided - it could only ever shrink the stamp, so raising the jitter
+                // quietly thinned the brush, halving its average size at full setting. Now
+                // symmetric, like the rotation and scatter jitters already were.
+                val jitter = BrushJitter.sizeFactor(localRandom.nextFloat(), state.sizeJitter)
+
+                // Flow jitter is symmetric around the set flow, so raising it varies the
+                // density without darkening or lightening the stroke overall.
+                val flowVariation = if (state.flowJitter > 0f) {
+                    1f + (localRandom.nextFloat() * 2f - 1f) * state.flowJitter
+                } else 1f
+                sharedPaint.alpha = (baseFlow * flowVariation * 255f).toInt().coerceIn(0, 255)
+
+                var sx = px
+                var sy = py
+
+                // Scatter jitter: a constant spray around the stroke, unlike the velocity
+                // scatter below. Omnidirectional rather than perpendicular - the two are
+                // different effects, and confining a plain scatter to one axis reads as a
+                // wobble along the line instead of a spread around it. Scaled by brush width
+                // so it stays proportional when the size changes.
+                if (state.scatterJitter > 0f) {
+                    val amp = state.scatterJitter * state.selectedWidth
+                    val angleRad = localRandom.nextFloat() * 2f * Math.PI
+                    val radius = localRandom.nextFloat() * amp
+                    sx += (cos(angleRad) * radius).toFloat()
+                    sy += (sin(angleRad) * radius).toFloat()
+                }
 
                 // Velocity scatter: offset the stamp perpendicular to the stroke direction.
                 // Signed: positive scatters fast strokes, negative scatters slow strokes.
-                var sx = px
-                var sy = py
                 if (velocityDynamicsActive && state.velocityScatterAmount != 0f) {
                     val scatterNorm = if (state.velocityScatterAmount >= 0f) currentVelocityNorm else 1f - currentVelocityNorm
                     val amp = abs(state.velocityScatterAmount) * scatterNorm * state.selectedWidth
@@ -581,11 +639,9 @@ class DrawingViewModel(
                 canvas.save()
                 canvas.translate(sx, sy)
                 
-                val finalRotation = if (state.brushRotationDynamics) {
-                    segmentAngle + state.brushRotation
-                } else {
-                    state.brushRotation
-                }
+                // Partial follow: 0 keeps the stamp's fixed angle, 1 locks it to the path,
+                // and everything between leans the stamp into the direction of travel.
+                val finalRotation = state.brushRotation + segmentAngle * state.rotationFollow
                 
                 val rotJitter = if (state.brushRotationJitter > 0f) {
                     (localRandom.nextFloat() * 2f - 1f) * state.brushRotationJitter
@@ -662,8 +718,58 @@ class DrawingViewModel(
      * preview can't drift from actual rendering. A synthetic speed profile (slow ends,
      * fast middle) demonstrates the velocity dynamics.
      */
-    fun renderBrushPreview(widthPx: Int, heightPx: Int): Bitmap {
-        val state = _uiState.value
+    fun renderBrushPreview(widthPx: Int, heightPx: Int): Bitmap =
+        renderPreviewFor(_uiState.value, widthPx, heightPx)
+
+    /**
+     * Same S-curve for a saved preset rather than the brush in hand, drawn in [color] so a
+     * list thumbnail stays legible whatever colour happens to be selected - the thumbnail is
+     * there to show the brush's shape and texture, not its colour.
+     *
+     * Custom tips and textures come from the preset asset cache, so a thumbnail shows the
+     * brush's real stamp rather than a default round one. A preset whose asset has not been
+     * decoded yet renders without it and re-renders when the preload bumps
+     * [DrawingState.brushAssetsVersion].
+     *
+     * Note this rebuilds the shared stamp cache for each distinct preset, so the next real
+     * stroke pays for one rebuild. Callers are expected to remember the result per preset
+     * rather than re-render on every recomposition.
+     */
+    fun renderPresetPreview(config: BrushConfig, color: Color, widthPx: Int, heightPx: Int): Bitmap {
+        val current = _uiState.value
+        // Fitted to the strip rather than drawn true to size - see BrushPreviewScale.
+        val displaySize = BrushPreviewScale.displaySize(config.size, heightPx)
+
+        // Prefer the live brush's already-decoded assets, fall back to the preset cache.
+        val tip = if (config.tipUri == current.brushTipUri) current.brushTipBitmap
+                  else config.tipUri?.let { presetTipCache[it] }
+        val mask = if (config.textureUri == current.brushTextureUri) current.brushTextureMask
+                   else config.textureUri?.let { presetMaskCache[it] }
+        val state = current.copy(
+            selectedColor = color,
+            selectedWidth = displaySize,
+            brushSoftness = config.softness,
+            brushOpacity = config.opacity,
+            brushFlow = config.flow,
+            brushSpacing = config.spacing,
+            brushSmoothing = config.smoothing,
+            brushRotation = config.rotation,
+            brushRotationJitter = config.rotationJitter,
+            sizeJitter = config.sizeJitter,
+            scatterJitter = config.scatterJitter,
+            brushTipUri = config.tipUri.takeIf { tip != null },
+            brushTipBitmap = tip,
+            brushTextureUri = config.textureUri.takeIf { mask != null },
+            brushTextureMask = mask,
+            velocityEnabled = config.velocityEnabled,
+            velocitySizeAmount = config.velocitySize,
+            velocityFlowAmount = config.velocityFlow,
+            velocityScatterAmount = config.velocityScatter
+        )
+        return renderPreviewFor(state, widthPx, heightPx)
+    }
+
+    private fun renderPreviewFor(state: DrawingState, widthPx: Int, heightPx: Int): Bitmap {
         val stroke = Bitmap.createBitmap(widthPx, heightPx, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(stroke)
 
@@ -1697,9 +1803,11 @@ class DrawingViewModel(
             lastBrushSmoothing = state.brushSmoothing,
             lastBrushColor = state.selectedColor.toArgb(),
             lastBrushRotation = state.brushRotation,
-            lastBrushRotationDynamics = state.brushRotationDynamics,
             lastBrushRotationJitter = state.brushRotationJitter,
             lastSizeJitter = state.sizeJitter,
+            lastScatterJitter = state.scatterJitter,
+            lastFlowJitter = state.flowJitter,
+            lastRotationFollow = state.rotationFollow,
             lastBrushTipUri = state.brushTipUri,
             lastBrushTextureUri = state.brushTextureUri,
             
@@ -1789,11 +1897,25 @@ class DrawingViewModel(
     fun setBrushSpacing(spacing: Float) = updateBrushSetting { it.copy(brushSpacing = spacing) }
     fun setBrushRotation(rotation: Float) = updateBrushSetting { it.copy(brushRotation = rotation) }
 
-    fun setRotationDynamics(enabled: Boolean) = updateBrushSetting({ preferenceManager.setRotationDynamics(enabled) }) { it.copy(brushRotationDynamics = enabled) }
 
     fun setRotationJitter(jitter: Float) = updateBrushSetting({ preferenceManager.setRotationJitter(jitter) }) { it.copy(brushRotationJitter = jitter) }
 
     fun setSizeJitter(jitter: Float) = updateBrushSetting { it.copy(sizeJitter = jitter) }
+
+    fun setFlowJitter(amount: Float) {
+        _uiState.update { it.copy(flowJitter = amount) }
+        viewModelScope.launch { preferenceManager.setFlowJitter(amount) }
+    }
+
+    fun setRotationFollow(amount: Float) {
+        _uiState.update { it.copy(rotationFollow = amount) }
+        viewModelScope.launch { preferenceManager.setRotationFollow(amount) }
+    }
+
+    fun setScatterJitter(amount: Float) {
+        _uiState.update { it.copy(scatterJitter = amount) }
+        viewModelScope.launch { preferenceManager.setScatterJitter(amount) }
+    }
 
     fun updateZoom(s: Float) {
         canvasAnimJob?.cancel()
@@ -2074,6 +2196,7 @@ class DrawingViewModel(
     }
 
     fun setReferenceImage(context: android.content.Context, uri: String) {
+        persistUriAccess(uri)
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val decoded = decodeReferenceImage(context, uri)
@@ -2194,11 +2317,38 @@ class DrawingViewModel(
         val brushId = state.selectedCustomBrushId?.toLongOrNull() ?: return
         val currentBrush = state.customBrushes.find { it.id == state.selectedCustomBrushId } ?: return
 
-        viewModelScope.launch { customBrushManager.updateExisting(brushId, currentBrush.name, state) }
+        viewModelScope.launch {
+            customBrushManager.updateExisting(brushId, currentBrush.name, currentBrush.folderId, state)
+        }
     }
 
     fun renameCustomBrush(brush: BrushConfig, newName: String) {
         viewModelScope.launch { customBrushManager.rename(brush, newName, _uiState.value.customBrushes) }
+    }
+
+    /** Refuses a blank or duplicate name rather than creating a second folder with it. */
+    fun createBrushFolder(name: String) {
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        if (_uiState.value.brushFolders.any { it.name.equals(trimmed, ignoreCase = true) }) return
+        viewModelScope.launch { repository.insertBrushFolder(BrushFolderEntity(name = trimmed)) }
+    }
+
+    fun renameBrushFolder(folder: BrushFolder, newName: String) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return
+        if (_uiState.value.brushFolders.any { it.name.equals(trimmed, ignoreCase = true) && it.id != folder.id }) return
+        viewModelScope.launch { repository.renameBrushFolder(folder.id, trimmed) }
+    }
+
+    /** The folder goes; its presets stay and fall back to the top level. */
+    fun deleteBrushFolder(folder: BrushFolder) {
+        viewModelScope.launch { repository.deleteBrushFolder(folder.id) }
+    }
+
+    fun moveBrushToFolder(brush: BrushConfig, folderId: Long?) {
+        val brushId = brush.id.toLongOrNull() ?: return
+        viewModelScope.launch { repository.moveBrushToFolder(brushId, folderId) }
     }
 
     fun deleteCustomBrush(brush: BrushConfig) {
@@ -2216,9 +2366,11 @@ class DrawingViewModel(
                 brushSpacing = brush.spacing,
                 brushSmoothing = brush.smoothing,
                 brushRotation = brush.rotation,
-                brushRotationDynamics = brush.rotationDynamics,
                 brushRotationJitter = brush.rotationJitter,
                 sizeJitter = brush.sizeJitter,
+                scatterJitter = brush.scatterJitter,
+                flowJitter = brush.flowJitter,
+                rotationFollow = brush.rotationFollow,
                 brushTipUri = brush.tipUri,
                 brushTextureUri = brush.textureUri,
                 velocityEnabled = brush.velocityEnabled,
@@ -2234,7 +2386,6 @@ class DrawingViewModel(
         setBrushTexture(context, brush.textureUri)
 
         viewModelScope.launch {
-            preferenceManager.setRotationDynamics(brush.rotationDynamics)
             preferenceManager.setRotationJitter(brush.rotationJitter)
             preferenceManager.setVelocityEnabled(brush.velocityEnabled)
             preferenceManager.setVelocitySize(brush.velocitySize)
@@ -2245,6 +2396,41 @@ class DrawingViewModel(
     }
 
     /** Shared decode step for [setBrushTip] and [setBrushTexture]: both just land in a different pair of state fields. */
+    /**
+     * Decodes any tip or texture a saved preset refers to but the live brush doesn't hold.
+     *
+     * Bumps [DrawingState.brushAssetsVersion] once done rather than per asset: thumbnails key
+     * their cached render on it, so a single bump re-renders the affected rows once instead of
+     * once per file that lands.
+     */
+    private fun preloadPresetAssets(brushes: List<com.yighy.paintcursor.data.CustomBrushEntity>) {
+        val tips = brushes.mapNotNull { it.tipUri }.toSet() - presetTipCache.keys
+        val textures = brushes.mapNotNull { it.textureUri }.toSet() - presetMaskCache.keys
+        if (tips.isEmpty() && textures.isEmpty()) return
+
+        viewModelScope.launch(Dispatchers.IO) {
+            var loaded = false
+            tips.forEach { uri ->
+                decodeUri(uri)?.let { presetTipCache[uri] = it; loaded = true }
+            }
+            textures.forEach { uri ->
+                decodeUri(uri)?.let { presetMaskCache[uri] = buildLuminanceMask(it); loaded = true }
+            }
+            if (loaded) {
+                withContext(Dispatchers.Main) {
+                    _uiState.update { it.copy(brushAssetsVersion = it.brushAssetsVersion + 1) }
+                }
+            }
+        }
+    }
+
+    private fun decodeUri(uri: String): Bitmap? = try {
+        context.contentResolver.openInputStream(android.net.Uri.parse(uri)).use { BitmapFactory.decodeStream(it) }
+    } catch (e: Exception) {
+        android.util.Log.e("DrawingViewModel", "Failed to load preset asset $uri", e)
+        null
+    }
+
     private fun loadBrushBitmap(context: android.content.Context, uri: String?, label: String, onLoaded: (uri: String?, bitmap: Bitmap?) -> Unit) {
         if (uri == null) {
             onLoaded(null, null)
@@ -2264,17 +2450,47 @@ class DrawingViewModel(
         }
     }
 
+    /**
+     * Asks to keep reading [uri] after the process dies.
+     *
+     * The picker's own grant lasts only as long as the task, but these uris are written into
+     * the project and read again on the next launch - without this the tip and texture simply
+     * stopped loading once the app had been closed, and the failure was swallowed by the
+     * decode's catch. Only documents opened through OpenDocument can grant this, so a uri that
+     * came from somewhere else is left as it is rather than treated as an error.
+     */
+    private fun persistUriAccess(uri: String?) {
+        if (uri == null) return
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                android.net.Uri.parse(uri),
+                android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        } catch (e: SecurityException) {
+            android.util.Log.w("DrawingViewModel", "No persistable grant for $uri", e)
+        }
+    }
+
     fun setBrushTip(context: android.content.Context, uri: String?) =
-        loadBrushBitmap(context, uri, "brush tip") { u, b -> _uiState.update { it.copy(brushTipUri = u, brushTipBitmap = b) } }
+        loadBrushBitmap(context, uri, "brush tip") { u, b ->
+            persistUriAccess(u)
+            _uiState.update { it.copy(brushTipUri = u, brushTipBitmap = b) }
+        }
 
     fun setBrushTexture(context: android.content.Context, uri: String?) =
         loadBrushBitmap(context, uri, "brush texture") { u, b ->
+            persistUriAccess(u)
             val mask = b?.let { buildLuminanceMask(it) }
             _uiState.update { it.copy(brushTextureUri = u, brushTextureBitmap = b, brushTextureMask = mask) }
         }
 
     override fun onCleared() {
         historyManager.clearAll()
+        // Full-size decodes, one per distinct preset asset - they would otherwise sit in the
+        // maps for as long as the process lives.
+        (presetTipCache.values + presetMaskCache.values).forEach { it.recycle() }
+        presetTipCache.clear()
+        presetMaskCache.clear()
         // viewModelScope is already cancelled here; the flush runs on persistScope so the
         // last strokes aren't lost when leaving the screen
         flushPendingSaves()

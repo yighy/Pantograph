@@ -7,7 +7,7 @@ import androidx.compose.material.icons.rounded.Gradient
 import androidx.compose.material.icons.rounded.HighlightAlt
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Polyline
-import androidx.compose.material.icons.rounded.Stream
+import androidx.compose.material.icons.rounded.Cable
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
@@ -22,7 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 enum class PinnableTool(val label: String, val icon: ImageVector) {
     Fill("Fill", Icons.Rounded.FormatColorFill),
     Gradient("Gradient", Icons.Rounded.Gradient),
-    Lazy("Lazy", Icons.Rounded.Stream),
+    Lazy("Lazy", Icons.Rounded.Cable),
     Lasso("Lasso", Icons.Rounded.Polyline),
     Rect("Rect", Icons.Rounded.HighlightAlt),
     Wand("Wand", Icons.Rounded.AutoFixHigh),

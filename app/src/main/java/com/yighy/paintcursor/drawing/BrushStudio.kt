@@ -39,6 +39,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,8 @@ import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.yighy.paintcursor.data.LayerEntity
 import com.yighy.paintcursor.data.PreferenceManager
+import com.yighy.paintcursor.ui.theme.MotionTokens
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlin.math.min
@@ -61,16 +64,41 @@ fun AdvancedBrushStudioWrapper(viewModel: DrawingViewModel, onDismiss: () -> Uni
 @Composable
 fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val tipPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    // OpenDocument, not GetContent: these uris are stored with the project and read again on
+    // the next launch, and only OpenDocument returns one whose read access can be made to
+    // outlive the task. With GetContent the tip and texture went missing on every restart.
+    val tipPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.setBrushTip(context, it.toString()) }
     }
-    val texturePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    val texturePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.setBrushTexture(context, it.toString()) }
     }
 
+    val selectedBrush = uiState.customBrushes.find { it.id == uiState.selectedCustomBrushId }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var showFolderMenu by remember { mutableStateOf(false) }
+    // Whether the brush in hand still matches the preset it came from. Without this the Save
+    // button looked identical whether or not there was anything to save, so there was no way
+    // to tell a preset that is up to date from one you have been editing.
+    val hasUnsavedChanges = selectedBrush != null && !uiState.toBrushConfig().paintsSameAs(selectedBrush)
+
+    var showDiscardDialog by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        // A swipe or a scrim tap has already animated the sheet away by the time this runs, so
+        // holding it open means bringing it back: otherwise the confirmation would sit over an
+        // empty screen, and cancelling would leave the sheet composed but invisible.
+        onDismissRequest = {
+            if (hasUnsavedChanges) {
+                showDiscardDialog = true
+                scope.launch { sheetState.show() }
+            } else {
+                onDismiss()
+            }
+        },
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.extraLarge,
         dragHandle = { BottomSheetDefaults.DragHandle() }
@@ -90,30 +118,143 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         .background(MaterialTheme.colorScheme.surfaceContainerLow)
                         .padding(bottom = 12.dp)
                 ) {
+                    // The studio edits one preset, so that preset names the screen. Tapping
+                    // the name renames it - there is no list here to rename things from any
+                    // more, and a heading that says "Brush Studio" would waste the one line
+                    // that can say which brush you are actually working on.
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text(
-                            "Brush Studio",
-                            style = MaterialTheme.typography.headlineSmall
-                        )
-                        // Current color at a glance (the preview stroke uses it)
-                        Box(
+                        Row(
                             modifier = Modifier
-                                .size(26.dp)
-                                .clip(CircleShape)
-                                .background(uiState.selectedColor)
-                                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
-                        )
+                                .weight(1f)
+                                .clip(MaterialTheme.shapes.small)
+                                .clickable(enabled = selectedBrush != null) { showRenameDialog = true }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                selectedBrush?.name ?: "Unsaved brush",
+                                style = MaterialTheme.typography.headlineSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (selectedBrush != null) {
+                                Icon(
+                                    Icons.Rounded.Edit,
+                                    contentDescription = "Rename preset",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        // Filing sits with the name rather than in the presets panel: both say
+                        // which preset this is, and the panel is where folders are made, not
+                        // where a single brush is assigned to one.
+                        if (selectedBrush != null) {
+                            Box {
+                                TextButton(
+                                    onClick = { showFolderMenu = true },
+                                    shape = MaterialTheme.shapes.medium
+                                ) {
+                                    Icon(Icons.Rounded.Folder, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(
+                                        uiState.brushFolders.find { it.id == selectedBrush.folderId }?.name ?: "Unfiled",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showFolderMenu,
+                                    onDismissRequest = { showFolderMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Unfiled") },
+                                        onClick = {
+                                            showFolderMenu = false
+                                            viewModel.moveBrushToFolder(selectedBrush, null)
+                                        },
+                                        trailingIcon = {
+                                            if (selectedBrush.folderId == null) {
+                                                Icon(Icons.Rounded.Check, null, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    )
+                                    uiState.brushFolders.forEach { folder ->
+                                        DropdownMenuItem(
+                                            text = { Text(folder.name) },
+                                            onClick = {
+                                                showFolderMenu = false
+                                                viewModel.moveBrushToFolder(selectedBrush, folder.id)
+                                            },
+                                            trailingIcon = {
+                                                if (selectedBrush.folderId == folder.id) {
+                                                    Icon(Icons.Rounded.Check, null, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        // Kept in the sticky header rather than after the settings: it is the
+                        // point of the screen, and it stays in reach while you scroll them.
+                        // Filled while there is something to save, tonal and reading "Saved"
+                        // once there isn't - rather than a disabled button, which would say
+                        // nothing about why it is unavailable. Pressing it when clean simply
+                        // rewrites the same values.
+                        // The two states differ in width as well as in fill, so the swap needs a
+                        // size transform on top of the cross-fade - without it the button snaps
+                        // between widths underneath a fading label. This is the one moving part
+                        // that reports back on something the user did, so it gets the enter
+                        // spring rather than a flat fade.
+                        if (selectedBrush != null) {
+                            AnimatedContent(
+                                targetState = hasUnsavedChanges,
+                                transitionSpec = {
+                                    (fadeIn(MotionTokens.expressiveEnter) +
+                                        scaleIn(MotionTokens.expressiveEnter, initialScale = 0.85f) togetherWith
+                                        fadeOut(MotionTokens.expressiveExit))
+                                        .using(SizeTransform(clip = false) { _, _ -> MotionTokens.panelTransition })
+                                },
+                                label = "saveState"
+                            ) { dirty ->
+                                if (dirty) {
+                                    Button(
+                                        onClick = { viewModel.updateSelectedBrush() },
+                                        shape = MaterialTheme.shapes.medium,
+                                        contentPadding = PaddingValues(horizontal = 16.dp)
+                                    ) {
+                                        Text("Save", style = MaterialTheme.typography.labelLarge)
+                                    }
+                                } else {
+                                    FilledTonalButton(
+                                        onClick = { viewModel.updateSelectedBrush() },
+                                        shape = MaterialTheme.shapes.medium,
+                                        contentPadding = PaddingValues(horizontal = 16.dp)
+                                    ) {
+                                        Icon(Icons.Rounded.Check, null, modifier = Modifier.size(16.dp))
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("Saved", style = MaterialTheme.typography.labelLarge)
+                                    }
+                                }
+                            }
+                        }
                     }
 
+                    // extraLarge against the sections' medium: the preview is what this
+                    // screen is about, and with every surface on the same radius nothing stood
+                    // out from anything else.
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(120.dp),
-                        shape = MaterialTheme.shapes.medium,
+                        shape = MaterialTheme.shapes.extraLarge,
                         color = MaterialTheme.colorScheme.surfaceContainerHigh,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     ) {
@@ -147,8 +288,10 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                                 val previewKey = listOf(
                                     uiState.selectedWidth, uiState.brushSoftness, uiState.brushOpacity,
                                     uiState.brushFlow, uiState.brushSpacing, uiState.selectedColor,
-                                    uiState.sizeJitter, uiState.brushRotation, uiState.brushRotationJitter,
-                                    uiState.brushRotationDynamics, uiState.brushTipBitmap,
+                                    uiState.sizeJitter, uiState.scatterJitter,
+                                    uiState.flowJitter, uiState.rotationFollow,
+                                    uiState.brushRotation, uiState.brushRotationJitter,
+                                    uiState.brushTipBitmap,
                                     uiState.brushTextureMask, uiState.velocityEnabled,
                                     uiState.velocitySizeAmount, uiState.velocityFlowAmount,
                                     uiState.velocityScatterAmount, wPx, hPx
@@ -173,9 +316,9 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
             item {
                 StudioSection(title = "Core Properties", icon = Icons.Rounded.Brush) {
                     DrawingSettingRow("Size", "${uiState.selectedWidth.toInt()}px", uiState.selectedWidth, { viewModel.selectWidth(it) }, 1f..300f)
-                    DrawingSettingRow("Softness", "${(uiState.brushSoftness * 100).toInt()}%", uiState.brushSoftness, { viewModel.setBrushSoftness(it) }, 0f..1f)
                     DrawingSettingRow("Opacity", "${(uiState.brushOpacity * 100).toInt()}%", uiState.brushOpacity, { viewModel.setBrushOpacity(it) }, 0f..1f)
                     DrawingSettingRow("Flow", "${(uiState.brushFlow * 100).toInt()}%", uiState.brushFlow, { viewModel.setBrushFlow(it) }, 0f..1f)
+                    DrawingSettingRow("Softness", "${(uiState.brushSoftness * 100).toInt()}%", uiState.brushSoftness, { viewModel.setBrushSoftness(it) }, 0f..1f)
                     DrawingSettingRow("Smoothing", "${(uiState.brushSmoothing * 100).toInt()}%", uiState.brushSmoothing, { viewModel.setBrushSmoothing(it) }, 0f..1f)
                 }
             }
@@ -183,19 +326,15 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
             // Dynamics & Jitter
             item {
                 StudioSection(title = "Dynamics", icon = Icons.Rounded.Tune) {
-                    DrawingSettingRow("Spacing", "${(uiState.brushSpacing * 100).toInt()}%", uiState.brushSpacing, { viewModel.setBrushSpacing(it) }, 0.01f..2f)
+                    DrawingSettingRow("Spacing", "${(uiState.brushSpacing * 100).toInt()}%", uiState.brushSpacing, { viewModel.setBrushSpacing(it) }, 0.01f..4f)
                     DrawingSettingRow("Rotation", "${uiState.brushRotation.toInt()}\u00B0", uiState.brushRotation, { viewModel.setBrushRotation(it) }, 0f..360f)
 
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Follow Direction", style = MaterialTheme.typography.titleMedium)
-                            Text("Rotate brush along path", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Switch(checked = uiState.brushRotationDynamics, onCheckedChange = { viewModel.setRotationDynamics(it) })
-                    }
+                    DrawingSettingRow("Follow Direction", "${(uiState.rotationFollow * 100).toInt()}%", uiState.rotationFollow, { viewModel.setRotationFollow(it) }, 0f..1f)
 
                     DrawingSettingRow("Size Jitter", "${(uiState.sizeJitter * 100).toInt()}%", uiState.sizeJitter, { viewModel.setSizeJitter(it) }, 0f..1f)
                     DrawingSettingRow("Rotation Jitter", "${uiState.brushRotationJitter.toInt()}\u00B0", uiState.brushRotationJitter, { viewModel.setRotationJitter(it) }, 0f..180f)
+                    DrawingSettingRow("Scatter Jitter", "${(uiState.scatterJitter * 100).toInt()}%", uiState.scatterJitter, { viewModel.setScatterJitter(it) }, 0f..1f)
+                    DrawingSettingRow("Flow Jitter", "${(uiState.flowJitter * 100).toInt()}%", uiState.flowJitter, { viewModel.setFlowJitter(it) }, 0f..1f)
 
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                         Column(modifier = Modifier.weight(1f)) {
@@ -205,10 +344,20 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         Switch(checked = uiState.velocityEnabled, onCheckedChange = { viewModel.setVelocityEnabled(it) })
                     }
 
-                    if (uiState.velocityEnabled) {
-                        DrawingSettingRow("Velocity Size", "${if (uiState.velocitySizeAmount > 0) "+" else ""}${(uiState.velocitySizeAmount * 100).toInt()}%", uiState.velocitySizeAmount, { viewModel.setVelocitySize(it) }, -1f..1f)
-                        DrawingSettingRow("Velocity Flow", "${if (uiState.velocityFlowAmount > 0) "+" else ""}${(uiState.velocityFlowAmount * 100).toInt()}%", uiState.velocityFlowAmount, { viewModel.setVelocityFlow(it) }, -1f..1f)
-                        DrawingSettingRow("Velocity Scatter", "${if (uiState.velocityScatterAmount > 0) "+" else ""}${(uiState.velocityScatterAmount * 100).toInt()}%", uiState.velocityScatterAmount, { viewModel.setVelocityScatter(it) }, -1f..1f)
+                    // animateContentSize rather than AnimatedVisibility: this Column spaces its
+                    // children by 16dp, and a collapsing AnimatedVisibility keeps its slot until
+                    // the exit finishes - so that gap would sit at full height the whole way down
+                    // and then vanish in a single frame. Animating this wrapper own height leaves
+                    // no phantom slot behind.
+                    Column(
+                        modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        if (uiState.velocityEnabled) {
+                            DrawingSettingRow("Velocity Size", "${if (uiState.velocitySizeAmount > 0) "+" else ""}${(uiState.velocitySizeAmount * 100).toInt()}%", uiState.velocitySizeAmount, { viewModel.setVelocitySize(it) }, -2f..2f)
+                            DrawingSettingRow("Velocity Flow", "${if (uiState.velocityFlowAmount > 0) "+" else ""}${(uiState.velocityFlowAmount * 100).toInt()}%", uiState.velocityFlowAmount, { viewModel.setVelocityFlow(it) }, -2f..2f)
+                            DrawingSettingRow("Velocity Scatter", "${if (uiState.velocityScatterAmount > 0) "+" else ""}${(uiState.velocityScatterAmount * 100).toInt()}%", uiState.velocityScatterAmount, { viewModel.setVelocityScatter(it) }, -2f..2f)
+                        }
                     }
                 }
             }
@@ -221,7 +370,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                             label = "Brush Tip",
                             icon = Icons.Rounded.FilterTiltShift,
                             bitmap = uiState.brushTipBitmap,
-                            onPick = { tipPicker.launch("image/*") },
+                            onPick = { tipPicker.launch(arrayOf("image/*")) },
                             onClear = { viewModel.setBrushTip(context, null) },
                             modifier = Modifier.weight(1f)
                         )
@@ -229,7 +378,7 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                             label = "Texture",
                             icon = Icons.Rounded.Texture,
                             bitmap = uiState.brushTextureBitmap,
-                            onPick = { texturePicker.launch("image/*") },
+                            onPick = { texturePicker.launch(arrayOf("image/*")) },
                             onClear = { viewModel.setBrushTexture(context, null) },
                             modifier = Modifier.weight(1f)
                         )
@@ -242,64 +391,74 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                 }
             }
 
-            // Presets Section
-            val selectedBrush = uiState.customBrushes.find { it.id == uiState.selectedCustomBrushId }
-            item {
-                StudioSection(
-                    title = if (selectedBrush != null) "Editing: ${selectedBrush.name}" else "Presets", 
-                    icon = Icons.Rounded.AutoAwesome
-                ) {
-                    var newBrushName by remember { mutableStateOf("") }
-                    val nameExists = uiState.customBrushes.any { it.name.equals(newBrushName, ignoreCase = true) }
-                    
-                    Row(
-                        modifier = Modifier.fillMaxWidth(), 
-                        verticalAlignment = Alignment.CenterVertically, 
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = newBrushName,
-                            onValueChange = { newBrushName = it },
-                            label = { Text("Brush Name") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            shape = MaterialTheme.shapes.medium,
-                            isError = nameExists
-                        )
-                        Button(
-                            enabled = newBrushName.isNotBlank() && !nameExists, 
-                            onClick = { viewModel.saveCurrentAsCustomBrush(newBrushName); newBrushName = "" },
-                            shape = MaterialTheme.shapes.medium
-                        ) {
-                            Icon(Icons.Rounded.Add, null)
-                        }
-                    }
+        }
+    }
 
-                    if (selectedBrush != null) {
-                        Button(
-                            onClick = { viewModel.updateSelectedBrush() }, 
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = MaterialTheme.shapes.medium,
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                        ) {
-                            Text("Save Changes to Preset")
-                        }
+    if (showDiscardDialog) {
+        AlertDialog(
+            // Tapping outside backs out of the decision entirely and leaves the sheet open,
+            // which is the safe reading of an accidental tap.
+            onDismissRequest = { showDiscardDialog = false },
+            title = { Text("Unsaved changes") },
+            text = { Text("This preset has been edited. Save the changes before closing?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.updateSelectedBrush()
+                    showDiscardDialog = false
+                    onDismiss()
+                }) { Text("Save and close") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showDiscardDialog = false
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Discard") }
+            }
+        )
+    }
+
+    if (showRenameDialog && selectedBrush != null) {
+        var renameText by remember(selectedBrush.id) { mutableStateOf(selectedBrush.name) }
+        val trimmed = renameText.trim()
+        val clashes = uiState.customBrushes.any {
+            it.name.equals(trimmed, ignoreCase = true) && it.id != selectedBrush.id
+        }
+        AlertDialog(
+            onDismissRequest = { showRenameDialog = false },
+            title = { Text("Rename preset") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = renameText,
+                        onValueChange = { renameText = it },
+                        label = { Text("Name") },
+                        singleLine = true,
+                        isError = clashes,
+                        shape = MaterialTheme.shapes.medium
+                    )
+                    if (clashes) {
+                        Text(
+                            "A preset already goes by that name",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
+                        )
                     }
                 }
-            }
-            
-            // Inlined Presets items to avoid nested scrolling conflicts
-            items(uiState.customBrushes) { brush ->
-                val isActive = brush.id == uiState.selectedCustomBrushId
-                BrushPresetCard(
-                    brush = brush,
-                    isActive = isActive,
-                    onSelect = { viewModel.selectCustomBrush(brush) },
-                    onDelete = { viewModel.deleteCustomBrush(brush) },
-                    onRename = { viewModel.renameCustomBrush(brush, it) }
-                )
-            }
-        }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = trimmed.isNotEmpty() && !clashes,
+                    onClick = {
+                        viewModel.renameCustomBrush(selectedBrush, trimmed)
+                        showRenameDialog = false
+                    }
+                ) { Text("Rename") }
+            },
+            dismissButton = { TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -326,18 +485,31 @@ fun AssetPickerCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                if (bitmap != null) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(MaterialTheme.shapes.small)
-                            .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), MaterialTheme.shapes.small),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Icon(icon, null, modifier = Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                // Picking or clearing an asset swaps a 48dp thumbnail for a 28dp glyph. A
+                // cross-fade keeps that from reading as a flicker inside a card that itself
+                // stays put.
+                AnimatedContent(
+                    targetState = bitmap,
+                    transitionSpec = {
+                        fadeIn(MotionTokens.expressiveEnter) +
+                            scaleIn(MotionTokens.expressiveEnter, initialScale = 0.8f) togetherWith
+                            fadeOut(MotionTokens.expressiveExit)
+                    },
+                    label = "assetThumb"
+                ) { current ->
+                    if (current != null) {
+                        Image(
+                            bitmap = current.asImageBitmap(),
+                            contentDescription = null,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(MaterialTheme.shapes.small)
+                                .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f), MaterialTheme.shapes.small),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(icon, null, modifier = Modifier.size(28.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -394,99 +566,15 @@ fun StudioSection(title: String, icon: androidx.compose.ui.graphics.vector.Image
 }
 
 @Composable
-fun BrushPresetCard(
-    brush: BrushConfig,
-    isActive: Boolean,
-    onSelect: () -> Unit,
-    onDelete: () -> Unit,
-    onRename: (String) -> Unit
-) {
-    var showRenameDialog by remember { mutableStateOf(false) }
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
-    Surface(
-        onClick = onSelect,
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.large,
-        color = if (isActive) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = if (isActive) 4.dp else 0.dp,
-        border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = brush.name, 
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Size: ${brush.size.toInt()}px \u2022 Opacity: ${(brush.opacity*100).toInt()}% \u2022 Flow: ${(brush.flow*100).toInt()}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = { showRenameDialog = true }) {
-                    Icon(Icons.Rounded.Edit, "Rename brush", modifier = Modifier.size(18.dp))
-                }
-                IconButton(onClick = { showDeleteConfirm = true }) {
-                    Icon(Icons.Rounded.Delete, "Delete brush", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
-                }
-            }
-        }
-    }
-
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Preset") },
-            text = { Text("Are you sure you want to delete '${brush.name}'?") },
-            confirmButton = {
-                TextButton(onClick = { onDelete(); showDeleteConfirm = false }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") }
-            }
-        )
-    }
-
-    if (showRenameDialog) {
-        var renameText by remember { mutableStateOf(brush.name) }
-        AlertDialog(
-            onDismissRequest = { showRenameDialog = false },
-            title = { Text("Rename Preset") },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    label = { Text("New Name") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { onRename(renameText); showRenameDialog = false }) { Text("Rename") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRenameDialog = false }) { Text("Cancel") }
-            }
-        )
-    }
-}
-
-@Composable
 fun DrawingSettingRow(label: String, valueLabel: String, value: Float, onValueChange: (Float) -> Unit, range: ClosedFloatingPointRange<Float>) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(modifier = Modifier.weight(1f)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(label, style = MaterialTheme.typography.labelSmall)
-                Text(valueLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                // Was labelSmall for both - 11sp, the smallest step on the scale, for the
+                // screen's actual content, which flattened ten rows into one weight and left
+                // no distinction between a parameter and its value.
+                Text(label, style = MaterialTheme.typography.titleSmall)
+                Text(valueLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             }
             Slider(value = value, onValueChange = onValueChange, valueRange = range)
         }

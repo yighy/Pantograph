@@ -33,7 +33,7 @@ The app allows you to draw by driving a **precision cursor** on the screen. Your
 
 Three small pills sit beside the floating button and are worked without looking away from the canvas. They fade out while you're drawing so they can't be hit mid-stroke, and reposition themselves as you drag the button around — flipping to the opposite side, or onto a free flank, rather than running off the screen.
 
-- **Right pill — brush levels.** Hold and drag: sideways picks between size, softness, opacity and flow; up and down sets the level. A live readout follows your hand, staying clear of it.
+- **Right pill — brush levels.** Hold and drag: sideways picks between size, opacity, flow and softness; up and down sets the level. A live readout follows your hand, staying clear of it.
 - **Bottom pill — drawing mode.** Hold and drag towards one of four cells: freehand or straight line, eraser off or on. It applies on release.
 - **Third pill — quick tools.** Hold and drag towards one of four cells, same as the mode pill. Long-press any entry in the tools menu to pin or unpin it — pinning a fifth drops the oldest.
 
@@ -44,10 +44,15 @@ Four is the ceiling on the quick-tool pill because that is what a quadrant holds
 ## ✨ Features
 
 **Brush engine**
-- Size, softness, opacity, flow, spacing, rotation, size or rotation jitter.
+- Size, opacity, flow, softness, smoothing, spacing and rotation.
+- Jitter on size, rotation, scatter and flow — each symmetric, so raising one varies the
+  stroke without shifting its average.
+- Follow direction as an amount rather than a switch: the stamp can lean into the path
+  instead of only ever locking to it.
+- Velocity dynamics: stroke speed can drive size, flow and scatter, up to ×9 either way.
 - Custom brush tips and textures.
-- Velocity dynamics: stroke speed can drive size, flow and scatter.
-- Saveable brush presets.
+- Saveable presets, organised into folders, each shown in the list as a real stroke drawn by
+  the engine itself rather than an illustration of one.
 
 **Tools**
 - Freehand, straight line, eraser in both modes, bucket fill with tolerance, linear gradient.
@@ -57,6 +62,9 @@ Four is the ceiling on the quick-tool pill because that is what a quadrant holds
 - Active selections clip every tool (draw inside the selection only).
 
 **Canvas & workflow**
+- Brush presets live in a panel under the toolbar: tap to load one, and edit, delete or file
+  it into a folder. The Brush Studio opens on the preset you picked and warns before closing
+  on unsaved changes.
 - Layers: reorder by drag & drop, opacity, visibility, duplicate, merge down, rename.
 - Full undo/redo history.
 - Import an image as a new layer (position/scale/rotate before applying).
@@ -98,6 +106,13 @@ JVM tests can cover them:
 - `SelectionCommitPolicy` — which layers need a history entry when a floating selection lands.
 - `PinnableTool` — parsing and toggling the persisted quick-tool pins, including the value
   format written by earlier builds.
+- `BrushConfig` — what counts as an unsaved edit, checked by reflection so a brush parameter
+  added later cannot quietly escape the comparison.
+- `BrushJitter` — that a jitter varies a value without moving its average.
+- `BrushPreviewScale` — fitting a 300px brush onto a list thumbnail without it swallowing the
+  strip or squeezing the fine brushes into identical hairlines.
+- `SchemaPolicy` — when the database may still fall back to wiping itself, and when a real
+  migration becomes mandatory.
 
 ## 👩‍💻 Tech Stack
 

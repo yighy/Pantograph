@@ -25,9 +25,11 @@ data class ProjectEntity(
     val lastBrushSmoothing: Float = 0.5f,
     val lastBrushColor: Int = -16777216, // Black
     val lastBrushRotation: Float = 0f,
-    val lastBrushRotationDynamics: Boolean = false,
     val lastBrushRotationJitter: Float = 0f,
     val lastSizeJitter: Float = 0f,
+    val lastScatterJitter: Float = 0f,
+    val lastFlowJitter: Float = 0f,
+    val lastRotationFollow: Float = 0f,
     val lastBrushTipUri: String? = null,
     val lastBrushTextureUri: String? = null,
 
@@ -88,6 +90,16 @@ data class StrokeEntity(
     val mode: String // "Freehand" or "StraightLine"
 )
 
+/**
+ * A named grouping for brush presets. Presets point at a folder rather than folders holding a
+ * list, so a folder can sit empty and renaming one touches a single row.
+ */
+@Entity(tableName = "brush_folders")
+data class BrushFolderEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String
+)
+
 @Entity(tableName = "custom_brushes")
 data class CustomBrushEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -100,9 +112,14 @@ data class CustomBrushEntity(
     val smoothing: Float,
     val colorArgb: Int,
     val rotation: Float,
-    val rotationDynamics: Boolean = false,
     val rotationJitter: Float = 0f,
     val sizeJitter: Float,
+    val scatterJitter: Float = 0f,
+    val flowJitter: Float = 0f,
+    /** How much of the path's angle the stamp adopts, 0..1. */
+    val rotationFollow: Float = 0f,
+    /** Null means the preset sits outside any folder. */
+    val folderId: Long? = null,
     val tipUri: String? = null,
     val textureUri: String? = null,
     val velocityEnabled: Boolean = false,

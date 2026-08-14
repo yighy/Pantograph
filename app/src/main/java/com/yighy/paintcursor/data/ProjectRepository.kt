@@ -51,4 +51,15 @@ class ProjectRepository(private val projectDao: ProjectDao) {
     suspend fun insertCustomBrush(brush: CustomBrushEntity) = projectDao.insertCustomBrush(brush)
     suspend fun renameCustomBrush(brushId: Long, newName: String) = projectDao.renameCustomBrush(brushId, newName)
     suspend fun deleteCustomBrush(brush: CustomBrushEntity) = projectDao.deleteCustomBrush(brush)
+
+    val allBrushFolders: Flow<List<BrushFolderEntity>> = projectDao.getAllBrushFolders()
+    suspend fun insertBrushFolder(folder: BrushFolderEntity) = projectDao.insertBrushFolder(folder)
+    suspend fun renameBrushFolder(folderId: Long, newName: String) = projectDao.renameBrushFolder(folderId, newName)
+    suspend fun moveBrushToFolder(brushId: Long, folderId: Long?) = projectDao.moveBrushToFolder(brushId, folderId)
+
+    /** Detaches first so a crash between the two can't orphan presets against a missing folder. */
+    suspend fun deleteBrushFolder(folderId: Long) {
+        projectDao.detachBrushesFromFolder(folderId)
+        projectDao.deleteBrushFolder(folderId)
+    }
 }

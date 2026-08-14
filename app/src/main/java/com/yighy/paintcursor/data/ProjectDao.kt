@@ -69,6 +69,25 @@ interface ProjectDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCustomBrush(brush: CustomBrushEntity): Long
 
+    @Query("SELECT * FROM brush_folders ORDER BY name COLLATE NOCASE")
+    fun getAllBrushFolders(): Flow<List<BrushFolderEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBrushFolder(folder: BrushFolderEntity): Long
+
+    @Query("UPDATE brush_folders SET name = :newName WHERE id = :folderId")
+    suspend fun renameBrushFolder(folderId: Long, newName: String)
+
+    @Query("DELETE FROM brush_folders WHERE id = :folderId")
+    suspend fun deleteBrushFolder(folderId: Long)
+
+    /** Deleting a folder must never take its presets with it - they fall back to no folder. */
+    @Query("UPDATE custom_brushes SET folderId = NULL WHERE folderId = :folderId")
+    suspend fun detachBrushesFromFolder(folderId: Long)
+
+    @Query("UPDATE custom_brushes SET folderId = :folderId WHERE id = :brushId")
+    suspend fun moveBrushToFolder(brushId: Long, folderId: Long?)
+
     @Query("UPDATE custom_brushes SET name = :newName WHERE id = :brushId")
     suspend fun renameCustomBrush(brushId: Long, newName: String)
 

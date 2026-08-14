@@ -17,11 +17,21 @@ class CustomBrushManager(private val repository: ProjectRepository) {
         return repository.insertCustomBrush(entityFromState(0, name, state))
     }
 
-    suspend fun updateExisting(brushId: Long, currentName: String, state: DrawingState) {
-        repository.insertCustomBrush(entityFromState(brushId, currentName, state))
+    /**
+     * [folderId] has to be carried in: this rebuilds the whole row from the live brush
+     * settings and upserts it, and DrawingState knows nothing about filing - leaving it out
+     * would quietly tip the preset out of its folder every time it was saved.
+     */
+    suspend fun updateExisting(brushId: Long, currentName: String, folderId: Long?, state: DrawingState) {
+        repository.insertCustomBrush(entityFromState(brushId, currentName, state, folderId))
     }
 
-    private fun entityFromState(id: Long, name: String, state: DrawingState) = CustomBrushEntity(
+    private fun entityFromState(
+        id: Long,
+        name: String,
+        state: DrawingState,
+        folderId: Long? = null
+    ) = CustomBrushEntity(
         id = id,
         name = name,
         size = state.selectedWidth,
@@ -32,9 +42,12 @@ class CustomBrushManager(private val repository: ProjectRepository) {
         smoothing = state.brushSmoothing,
         colorArgb = state.selectedColor.toArgb(),
         rotation = state.brushRotation,
-        rotationDynamics = state.brushRotationDynamics,
         rotationJitter = state.brushRotationJitter,
         sizeJitter = state.sizeJitter,
+        scatterJitter = state.scatterJitter,
+        flowJitter = state.flowJitter,
+        rotationFollow = state.rotationFollow,
+        folderId = folderId,
         tipUri = state.brushTipUri,
         textureUri = state.brushTextureUri,
         velocityEnabled = state.velocityEnabled,
@@ -66,7 +79,10 @@ class CustomBrushManager(private val repository: ProjectRepository) {
             smoothing = brush.smoothing,
             colorArgb = 0,
             rotation = brush.rotation,
-            sizeJitter = brush.sizeJitter
+            sizeJitter = brush.sizeJitter,
+            scatterJitter = brush.scatterJitter,
+            flowJitter = brush.flowJitter,
+            rotationFollow = brush.rotationFollow
         ))
     }
 }

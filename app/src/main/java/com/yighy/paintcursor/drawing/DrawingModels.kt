@@ -53,15 +53,61 @@ data class BrushConfig(
     val spacing: Float = 0.1f,
     val smoothing: Float = 0.5f,
     val rotation: Float = 0f,
-    val rotationDynamics: Boolean = false,
     val rotationJitter: Float = 0f,
     val sizeJitter: Float = 0f,
+    val scatterJitter: Float = 0f,
+    val flowJitter: Float = 0f,
+    val rotationFollow: Float = 0f,
     val tipUri: String? = null,
     val textureUri: String? = null,
     val velocityEnabled: Boolean = false,
     val velocitySize: Float = 0f,
     val velocityFlow: Float = 0f,
-    val velocityScatter: Float = 0f
+    val velocityScatter: Float = 0f,
+    /** Which folder holds this preset; null means it sits loose at the top level. */
+    val folderId: Long? = null
+) {
+    /**
+     * True when [other] would paint identically, ignoring which preset each one is.
+     *
+     * Identity and filing - id, name, folder - are normalised away: moving a preset between
+     * folders changes nothing about how it paints, and counting it as an unsaved edit would
+     * light up the Save button for a change that has already been persisted.
+     *
+     * Compares the rest by leaning on data-class equality rather than listing
+     * the fields: a new brush parameter is then covered the moment it is added. Spelling the
+     * comparison out by hand is how a "no unsaved changes" badge quietly starts lying after
+     * someone adds a setting and forgets this spot.
+     */
+    fun paintsSameAs(other: BrushConfig): Boolean =
+        copy(id = other.id, name = other.name, folderId = other.folderId) == other
+}
+
+/** A named grouping of brush presets. */
+data class BrushFolder(val id: Long, val name: String)
+
+/** The brush currently in hand, in the same shape as a saved preset so the two can be compared. */
+fun DrawingState.toBrushConfig(id: String = "", name: String = ""): BrushConfig = BrushConfig(
+    id = id,
+    name = name,
+    size = selectedWidth,
+    softness = brushSoftness,
+    opacity = brushOpacity,
+    flow = brushFlow,
+    spacing = brushSpacing,
+    smoothing = brushSmoothing,
+    rotation = brushRotation,
+    rotationJitter = brushRotationJitter,
+    sizeJitter = sizeJitter,
+    scatterJitter = scatterJitter,
+    flowJitter = flowJitter,
+    rotationFollow = rotationFollow,
+    tipUri = brushTipUri,
+    textureUri = brushTextureUri,
+    velocityEnabled = velocityEnabled,
+    velocitySize = velocitySizeAmount,
+    velocityFlow = velocityFlowAmount,
+    velocityScatter = velocityScatterAmount
 )
 
 data class DrawingState(
@@ -83,9 +129,15 @@ data class DrawingState(
     val brushSmoothing: Float = 0.5f,
     val brushSpacing: Float = 0.1f,
     val brushRotation: Float = 0f,
-    val brushRotationDynamics: Boolean = false,
     val brushRotationJitter: Float = 0f,
     val sizeJitter: Float = 0f,
+    // Random offset per stamp, as a fraction of brush width, in any direction.
+    // Unlike velocity scatter this is constant - it does not care how fast you draw.
+    val scatterJitter: Float = 0f,
+    /** Per-stamp variation in flow, so density breathes along a stroke. */
+    val flowJitter: Float = 0f,
+    /** 0 = the stamp keeps its fixed angle, 1 = it fully follows the path. */
+    val rotationFollow: Float = 0f,
     val brushTipUri: String? = null,
     val brushTipBitmap: android.graphics.Bitmap? = null,
     val brushTextureUri: String? = null,
@@ -93,8 +145,10 @@ data class DrawingState(
     // Canvas-anchored paper grain: texture luminance converted to an alpha mask,
     // multiplied over the whole stroke (DST_IN) at composition time
     val brushTextureMask: android.graphics.Bitmap? = null,
-    // Velocity dynamics. All amounts are signed (-1..1). Size/flow: positive = fast strokes
-    // get thicker/denser, negative = thinner/lighter (symmetric multiplicative scale).
+    // Velocity dynamics. All amounts are signed (-2..2). Size/flow: positive = fast strokes
+    // get thicker/denser, negative = thinner/lighter. The scale is multiplicative (3^amount),
+    // so the ends of the range are x9 and /9 rather than merely x2 - enough for a brush that
+    // genuinely transforms with speed, which the old x3 ceiling could not reach.
     // Scatter: positive = stamps scatter on fast strokes, negative = on slow strokes.
     val velocityEnabled: Boolean = false,
     val velocitySizeAmount: Float = 0f,
@@ -103,6 +157,9 @@ data class DrawingState(
     
     val selectedCustomBrushId: String? = null,
     val customBrushes: List<BrushConfig> = emptyList(),
+    val brushFolders: List<BrushFolder> = emptyList(),
+    /** Bumped when preset tips/textures finish decoding, so thumbnails know to re-render. */
+    val brushAssetsVersion: Int = 0,
     
     val drawingMode: DrawingMode = DrawingMode.Freehand,
     val isPenDown: Boolean = false,

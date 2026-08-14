@@ -27,7 +27,7 @@ android {
         minSdk = 31
         targetSdk = 37
         versionCode = 1
-        versionName = "0.4.0."
+        versionName = "0.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -61,6 +61,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // VERSION_NAME is read at runtime to decide whether the database may still fall back
+        // to a destructive migration - see SchemaPolicy.
+        buildConfig = true
     }
 }
 

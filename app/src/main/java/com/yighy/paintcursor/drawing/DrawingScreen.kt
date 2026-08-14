@@ -73,7 +73,10 @@ fun DrawingScreen(
     // open panels, and a tap is the only reliable trigger for that.
     var activePanel by remember { mutableStateOf(ToolbarPanel.None) }
 
-    val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+    // OpenDocument so the reference survives a restart - it is stored with the project. The
+    // layer import below stays on GetContent: it reads the pixels there and then and never
+    // needs the uri again.
+    val imagePickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { viewModel.setReferenceImage(context, it.toString()) }
     }
 
@@ -250,7 +253,9 @@ fun LayersAndActionsSection(
     onNavigateToSettings: () -> Unit,
     /** Opens the toolbar's Settings panel, for tools whose options live there. */
     onRequestSettingsPanel: () -> Unit,
-    imagePickerLauncher: androidx.activity.result.ActivityResultLauncher<String>,
+    // Array<String> because the reference picker is an OpenDocument contract: it takes a list
+    // of mime types, unlike the single string GetContent expects.
+    imagePickerLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
     layerImportLauncher: androidx.activity.result.ActivityResultLauncher<String>
 ) {
     val context = LocalContext.current
@@ -332,7 +337,7 @@ fun LayersAndActionsSection(
                         if (showImportOptions) {
                             DropdownMenuItem(
                                 text = { Text("Reference Image") },
-                                onClick = { imagePickerLauncher.launch("image/*"); showMenu = false },
+                                onClick = { imagePickerLauncher.launch(arrayOf("image/*")); showMenu = false },
                                 leadingIcon = { Icon(Icons.Rounded.Image, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
                                 modifier = Modifier.padding(start = 16.dp)
                             )
@@ -467,8 +472,16 @@ private fun ToolsMenuButton(
                         viewModel.setDrawingMode(if (drawingMode is DrawingMode.Gradient) DrawingMode.Freehand else DrawingMode.Gradient)
                         showTools = false
                     }
+                }
+
+                HorizontalDivider(thickness = 0.5.dp, modifier = Modifier.padding(vertical = 2.dp))
+
+                // Lazy isn't a tool that paints - it steadies the cursor whichever brush is
+                // in hand - so it sits apart from the paint tools rather than among them.
+                Text("Guide", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     ExtraToolItem(
-                        "Lazy", isLazyModeActive, Icons.Rounded.Stream,
+                        "Lazy", isLazyModeActive, Icons.Rounded.Cable,
                         isPinned = pinnedTools.contains(PinnableTool.Lazy),
                         onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Lazy) }
                     ) {

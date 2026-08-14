@@ -854,10 +854,12 @@ fun HoverDrawButton(
 
 /** The four brush parameters reachable from the right satellite, with their slider ranges. */
 private enum class BrushGateParam(val label: String, val min: Float, val max: Float) {
+    // Declaration order is the column order in the gate and in its readout panel, so the two
+    // cannot drift apart. Matches the Brush Studio's Core Properties list.
     Size("Size", 1f, 300f),
-    Softness("Soft", 0f, 1f),
     Opacity("Opac", 0f, 1f),
-    Flow("Flow", 0f, 1f);
+    Flow("Flow", 0f, 1f),
+    Softness("Soft", 0f, 1f);
 
     fun read(state: DrawingState): Float = when (this) {
         Size -> state.selectedWidth

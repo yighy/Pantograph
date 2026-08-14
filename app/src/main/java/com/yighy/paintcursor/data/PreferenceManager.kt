@@ -29,7 +29,6 @@ class PreferenceManager(private val context: Context) {
         val HIDE_STATUS_BAR_KEY = booleanPreferencesKey("hide_status_bar")
         val DYNAMIC_COLOR_KEY = booleanPreferencesKey("dynamic_color")
         val FILL_TOLERANCE_KEY = floatPreferencesKey("fill_tolerance")
-        val ROTATION_DYNAMICS_KEY = booleanPreferencesKey("rotation_dynamics")
         val ROTATION_JITTER_KEY = floatPreferencesKey("rotation_jitter")
         val VELOCITY_SIZE_KEY = floatPreferencesKey("velocity_size")
         val VELOCITY_FLOW_KEY = floatPreferencesKey("velocity_flow")
@@ -38,6 +37,9 @@ class PreferenceManager(private val context: Context) {
         val OFFSCREEN_CURSOR_ARROW_KEY = booleanPreferencesKey("offscreen_cursor_arrow")
         val SATELLITE_GATE_SENSITIVITY_KEY = floatPreferencesKey("satellite_gate_sensitivity")
         val PINNED_TOOL_KEY = stringPreferencesKey("pinned_tool")
+        val SCATTER_JITTER_KEY = floatPreferencesKey("scatter_jitter")
+        val FLOW_JITTER_KEY = floatPreferencesKey("flow_jitter")
+        val ROTATION_FOLLOW_KEY = floatPreferencesKey("rotation_follow")
     }
 
     /**
@@ -104,9 +106,12 @@ class PreferenceManager(private val context: Context) {
         preferences[FILL_TOLERANCE_KEY] ?: 10f
     }
 
-    val rotationDynamics: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[ROTATION_DYNAMICS_KEY] ?: false
+    val scatterJitter: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[SCATTER_JITTER_KEY] ?: 0f
     }
+
+    val flowJitter: Flow<Float> = context.dataStore.data.map { it[FLOW_JITTER_KEY] ?: 0f }
+    val rotationFollow: Flow<Float> = context.dataStore.data.map { it[ROTATION_FOLLOW_KEY] ?: 0f }
 
     val rotationJitter: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[ROTATION_JITTER_KEY] ?: 0f
@@ -215,12 +220,6 @@ class PreferenceManager(private val context: Context) {
         }
     }
 
-    suspend fun setRotationDynamics(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[ROTATION_DYNAMICS_KEY] = enabled
-        }
-    }
-
     suspend fun setRotationJitter(jitter: Float) {
         context.dataStore.edit { preferences ->
             preferences[ROTATION_JITTER_KEY] = jitter
@@ -236,6 +235,20 @@ class PreferenceManager(private val context: Context) {
     suspend fun setVelocityFlow(amount: Float) {
         context.dataStore.edit { preferences ->
             preferences[VELOCITY_FLOW_KEY] = amount
+        }
+    }
+
+    suspend fun setFlowJitter(amount: Float) {
+        context.dataStore.edit { it[FLOW_JITTER_KEY] = amount }
+    }
+
+    suspend fun setRotationFollow(amount: Float) {
+        context.dataStore.edit { it[ROTATION_FOLLOW_KEY] = amount }
+    }
+
+    suspend fun setScatterJitter(amount: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[SCATTER_JITTER_KEY] = amount
         }
     }
 

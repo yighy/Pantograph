@@ -2,6 +2,9 @@ package com.yighy.paintcursor.drawing
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -22,7 +25,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
@@ -525,12 +530,28 @@ fun QuickBrushPanel(
     viewModel: DrawingViewModel,
     onOpenStudio: () -> Unit
 ) {
+    val customBrushes by remember(viewModel) { viewModel.uiState.map { it.customBrushes }.distinctUntilChanged() }.collectAsState(emptyList())
+    var showNewPresetDialog by remember { mutableStateOf(false) }
+    var showNewFolderDialog by remember { mutableStateOf(false) }
+    val folders by remember(viewModel) { viewModel.uiState.map { it.brushFolders }.distinctUntilChanged() }.collectAsState(emptyList())
+    val selectedBrushId by remember(viewModel) { viewModel.uiState.map { it.selectedCustomBrushId }.distinctUntilChanged() }.collectAsState(null)
+    val selectedBrush = customBrushes.find { it.id == selectedBrushId }
+
+    // Shared by the header button and each row's long-press menu. Selecting first is what makes
+    // the studio open *on* this preset rather than on whatever was in hand.
+    val onEditBrush: (BrushConfig) -> Unit = { brush ->
+        viewModel.selectCustomBrush(brush)
+        onOpenStudio()
+    }
+    var brushToDelete by remember { mutableStateOf<BrushConfig?>(null) }
+
     Column {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Size/Softness/Opacity/Flow sliders live on the FAB's right satellite gate
-            // (see HoverDrawButton). Opening this panel goes straight to the saved presets
-            // rather than to an intermediate menu; the studio is one tap from the header.
+            // (see HoverDrawButton). There is no button into the studio here any more: the
+            // studio is where you edit *a preset*, so it is reached from the preset you want
+            // to work on rather than from a heading that names none of them.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -542,102 +563,71 @@ fun QuickBrushPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp)
                 )
-                TextButton(
-                    onClick = onOpenStudio,
-                    modifier = Modifier.height(48.dp),
-                    shape = MaterialTheme.shapes.medium
-                ) {
-                    Icon(Icons.Rounded.Tune, null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Brush studio", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-
-            PresetsListContent(viewModel)
-        }
-    }
-}
-
-@Composable
-fun PresetsListContent(viewModel: DrawingViewModel) {
-    val customBrushes by remember(viewModel) { viewModel.uiState.map { it.customBrushes }.distinctUntilChanged() }.collectAsState(emptyList())
-    val selectedCustomBrushId by remember(viewModel) { viewModel.uiState.map { it.selectedCustomBrushId }.distinctUntilChanged() }.collectAsState(null)
-    
-    var brushToRename by remember { mutableStateOf<BrushConfig?>(null) }
-    var brushToDelete by remember { mutableStateOf<BrushConfig?>(null) }
-
-    Card(
-        modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-    ) {
-        if (customBrushes.isEmpty()) {
-            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                Text("No saved brushes", style = MaterialTheme.typography.labelSmall)
-            }
-        } else {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                customBrushes.forEach { brush ->
-                    val isActive = brush.id == selectedCustomBrushId
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { 
-                                viewModel.selectCustomBrush(brush)
-                            }
-                            .background(if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else Color.Transparent)
-                            // Vertical padding is small because the 48dp action buttons now
-                            // set the row height; this keeps rows the same size as before.
-                            .padding(horizontal = 12.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                // Icon-only: the row is three short actions and the labels were costing more
+                // width than they explained. Each keeps its spoken name for screen readers.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showNewFolderDialog = true }) {
+                        Icon(
+                            Icons.Rounded.CreateNewFolder,
+                            "New folder",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    // Both act on the preset selected in the list below, so they are absent
+                    // rather than greyed out when there is none: a disabled control asks the
+                    // user to work out why, an absent one poses no question at all.
+                    AnimatedVisibility(
+                        visible = selectedBrush != null,
+                        enter = fadeIn(MotionTokens.expressiveEnter) + expandHorizontally(MotionTokens.panelTransition),
+                        exit = fadeOut(MotionTokens.expressiveExit) + shrinkHorizontally(MotionTokens.panelTransition)
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(brush.name, style = MaterialTheme.typography.bodySmall, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal, color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
-                            Text("${brush.size.toInt()}px - Flow ${(brush.flow*100).toInt()}%", style = MaterialTheme.typography.labelSmall, color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Row {
-                            IconButton(onClick = { brushToRename = brush }) {
-                                Icon(Icons.Rounded.Edit, "Rename brush", tint = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(onClick = { selectedBrush?.let(onEditBrush) }) {
+                                Icon(
+                                    Icons.Rounded.Edit,
+                                    "Edit selected preset in studio",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             }
-                            IconButton(onClick = { brushToDelete = brush }) {
-                                Icon(Icons.Rounded.Delete, "Delete brush", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(18.dp))
+                            IconButton(onClick = { brushToDelete = selectedBrush }) {
+                                Icon(
+                                    Icons.Rounded.Delete,
+                                    "Delete selected preset",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.error
+                                )
                             }
                         }
                     }
-                    HorizontalDivider(thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 8.dp), color = if (isActive) Color.Transparent else DividerDefaults.color)
+                    // Captures whatever the brush is set to right now, so a brush arrived at by
+                    // feel with the satellite gate can be kept without a detour through the studio.
+                    IconButton(onClick = { showNewPresetDialog = true }) {
+                        Icon(
+                            Icons.Rounded.Add,
+                            "New preset",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
+
+            PresetsListContent(viewModel = viewModel)
         }
     }
 
-    if (brushToRename != null) {
-        var renameText by remember { mutableStateOf(brushToRename!!.name) }
-        val renameExists = customBrushes.any { it.name.equals(renameText, ignoreCase = true) && it.id != brushToRename!!.id }
-
-        AlertDialog(
-            onDismissRequest = { brushToRename = null },
-            title = { Text("Rename Brush", style = MaterialTheme.typography.titleMedium) },
-            text = {
-                OutlinedTextField(
-                    value = renameText,
-                    onValueChange = { renameText = it },
-                    label = { Text("New Name") },
-                    singleLine = true,
-                    isError = renameExists,
-                    supportingText = if (renameExists) { { Text("Name already exists") } } else null
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    enabled = renameText.isNotBlank() && !renameExists,
-                    onClick = {
-                        viewModel.renameCustomBrush(brushToRename!!, renameText)
-                        brushToRename = null
-                    }
-                ) { Text("Rename") }
-            },
-            dismissButton = {
-                TextButton(onClick = { brushToRename = null }) { Text("Cancel") }
+    if (showNewPresetDialog) {
+        NamePromptDialog(
+            title = "New preset",
+            initial = "",
+            confirmLabel = "Save",
+            takenNames = customBrushes.map { it.name },
+            onDismiss = { showNewPresetDialog = false },
+            onConfirm = { name ->
+                viewModel.saveCurrentAsCustomBrush(name)
+                showNewPresetDialog = false
             }
         )
     }
@@ -660,6 +650,143 @@ fun PresetsListContent(viewModel: DrawingViewModel) {
             }
         )
     }
+
+    if (showNewFolderDialog) {
+        NamePromptDialog(
+            title = "New folder",
+            initial = "",
+            confirmLabel = "Create",
+            takenNames = folders.map { it.name },
+            onDismiss = { showNewFolderDialog = false },
+            onConfirm = { name ->
+                viewModel.createBrushFolder(name)
+                showNewFolderDialog = false
+            }
+        )
+    }
+}
+
+
+@Composable
+fun PresetsListContent(viewModel: DrawingViewModel) {
+    val customBrushes by remember(viewModel) { viewModel.uiState.map { it.customBrushes }.distinctUntilChanged() }.collectAsState(emptyList())
+    val folders by remember(viewModel) { viewModel.uiState.map { it.brushFolders }.distinctUntilChanged() }.collectAsState(emptyList())
+    val selectedCustomBrushId by remember(viewModel) { viewModel.uiState.map { it.selectedCustomBrushId }.distinctUntilChanged() }.collectAsState(null)
+
+    var folderToRename by remember { mutableStateOf<BrushFolder?>(null) }
+    var folderToDelete by remember { mutableStateOf<BrushFolder?>(null) }
+    // Collapsed by id, so a folder that disappears takes its entry with it and a new folder
+    // starts open rather than inheriting a stale collapsed flag from a recycled position.
+    val collapsed = remember { mutableStateListOf<Long>() }
+
+    val loose = customBrushes.filter { it.folderId == null }
+
+    Card(
+        // Rows are taller now that each one carries a full-width stroke, so the cap is raised
+        // to keep three and a bit of them in view - the part-row being the cue that it scrolls.
+        modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+    ) {
+        if (customBrushes.isEmpty() && folders.isEmpty()) {
+            Box(Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                Text("No saved brushes", style = MaterialTheme.typography.labelSmall)
+            }
+        } else {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                folders.forEach { folder ->
+                    val contents = customBrushes.filter { it.folderId == folder.id }
+                    val isCollapsed = collapsed.contains(folder.id)
+                    FolderHeaderRow(
+                        folder = folder,
+                        count = contents.size,
+                        collapsed = isCollapsed,
+                        onToggle = {
+                            if (isCollapsed) collapsed.remove(folder.id) else collapsed.add(folder.id)
+                        },
+                        onRename = { folderToRename = folder },
+                        onDelete = { folderToDelete = folder }
+                    )
+                    // animateContentSize, not AnimatedVisibility: this Column has no spacing to
+                    // leave behind, and animating the wrapper keeps the rows below sliding
+                    // rather than jumping when a folder opens.
+                    Column(Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition)) {
+                        if (!isCollapsed) {
+                            if (contents.isEmpty()) {
+                                Text(
+                                    "Empty",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 28.dp, top = 4.dp, bottom = 8.dp)
+                                )
+                            }
+                            contents.forEach { brush ->
+                                PresetRow(
+                                    viewModel = viewModel,
+                                    brush = brush,
+                                    isActive = brush.id == selectedCustomBrushId,
+                                    indented = true,
+                                    onSelect = { viewModel.selectCustomBrush(brush) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Presets outside any folder come last: folders are the structure, and these
+                // are what has not been filed yet.
+                if (loose.isNotEmpty() && folders.isNotEmpty()) {
+                    Text(
+                        "Unfiled",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 2.dp)
+                    )
+                }
+                loose.forEach { brush ->
+                    PresetRow(
+                        viewModel = viewModel,
+                        brush = brush,
+                        isActive = brush.id == selectedCustomBrushId,
+                        indented = false,
+                        onSelect = { viewModel.selectCustomBrush(brush) }
+                    )
+                }
+            }
+        }
+    }
+
+    folderToRename?.let { folder ->
+        NamePromptDialog(
+            title = "Rename folder",
+            initial = folder.name,
+            confirmLabel = "Rename",
+            takenNames = folders.filter { it.id != folder.id }.map { it.name },
+            onDismiss = { folderToRename = null },
+            onConfirm = {
+                viewModel.renameBrushFolder(folder, it)
+                folderToRename = null
+            }
+        )
+    }
+
+    folderToDelete?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { folderToDelete = null },
+            title = { Text("Delete folder") },
+            text = { Text("'${folder.name}' will be removed. The presets inside it are kept and move back out of any folder.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteBrushFolder(folder)
+                        folderToDelete = null
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { folderToDelete = null }) { Text("Cancel") } }
+        )
+    }
+
 }
 
 @Composable
@@ -707,4 +834,176 @@ fun SettingRow(label: String, valueLabel: String, value: Float, onValueChange: (
             Slider(value = value, onValueChange = onValueChange, valueRange = range)
         }
     }
+}
+
+/**
+ * One saved preset: the stroke itself, with its name underneath.
+ *
+ * Tapping only ever selects. Editing and deleting moved to the panel header, where they appear
+ * once something is selected - a long-press menu here meant the two most useful actions on a
+ * preset were invisible until you happened to try holding one.
+ */
+@Composable
+private fun PresetRow(
+    viewModel: DrawingViewModel,
+    brush: BrushConfig,
+    isActive: Boolean,
+    indented: Boolean,
+    onSelect: () -> Unit
+) {
+    val density = LocalDensity.current
+    val strokeHeight = 48.dp
+    val strokeColor = MaterialTheme.colorScheme.onSurface
+
+    // Re-renders once a custom tip or texture finishes decoding, not on every recomposition -
+    // this walks the real stamp engine and is not a cheap draw.
+    val assetsVersion by remember(viewModel) {
+        viewModel.uiState.map { it.brushAssetsVersion }.distinctUntilChanged()
+    }.collectAsState(0)
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onSelect)
+            .background(if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else Color.Transparent)
+            .padding(start = if (indented) 24.dp else 10.dp, end = 10.dp)
+            .padding(vertical = 6.dp)
+            .semantics { selected = isActive }
+    ) {
+        // The stroke is rendered at the width it will actually occupy, so it reads as a real
+        // mark rather than a scaled-down sample.
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val widthPx = constraints.maxWidth
+            val heightPx = with(density) { strokeHeight.roundToPx() }
+            val thumbnail = remember(brush, strokeColor, assetsVersion, widthPx) {
+                viewModel.renderPresetPreview(brush, strokeColor, widthPx, heightPx)
+            }
+            Image(
+                bitmap = thumbnail.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(strokeHeight)
+                    .clip(MaterialTheme.shapes.extraSmall)
+            )
+        }
+        Text(
+            brush.name,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+            color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
+    }
+    HorizontalDivider(
+        thickness = 0.5.dp,
+        modifier = Modifier.padding(horizontal = 8.dp),
+        color = if (isActive) Color.Transparent else DividerDefaults.color
+    )
+}
+
+/** Folder title bar: tap to fold, overflow to rename or remove. */
+@Composable
+private fun FolderHeaderRow(
+    folder: BrushFolder,
+    count: Int,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+    onRename: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    val chevronTurn by animateFloatAsState(
+        targetValue = if (collapsed) -90f else 0f,
+        animationSpec = MotionTokens.pulse,
+        label = "folderChevron"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(start = 8.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            Icons.Rounded.KeyboardArrowDown,
+            contentDescription = if (collapsed) "Expand folder" else "Collapse folder",
+            modifier = Modifier.size(18.dp).rotate(chevronTurn),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            folder.name,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            "$count",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Box {
+            IconButton(onClick = { showMenu = true }) {
+                Icon(Icons.Rounded.MoreVert, "Folder actions", modifier = Modifier.size(18.dp))
+            }
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                DropdownMenuItem(
+                    text = { Text("Rename") },
+                    onClick = { showMenu = false; onRename() }
+                )
+                DropdownMenuItem(
+                    text = { Text("Delete") },
+                    onClick = { showMenu = false; onDelete() }
+                )
+            }
+        }
+    }
+}
+
+/** Shared name prompt: rejects blanks and names already in use, case-insensitively. */
+@Composable
+private fun NamePromptDialog(
+    title: String,
+    initial: String,
+    confirmLabel: String,
+    takenNames: List<String>,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit
+) {
+    var name by remember { mutableStateOf(initial) }
+    val trimmed = name.trim()
+    val clashes = takenNames.any { it.equals(trimmed, ignoreCase = true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    isError = clashes,
+                    shape = MaterialTheme.shapes.medium
+                )
+                if (clashes) {
+                    Text(
+                        "That name is already in use",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(trimmed) },
+                enabled = trimmed.isNotEmpty() && !clashes
+            ) { Text(confirmLabel) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
