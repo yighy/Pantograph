@@ -407,21 +407,10 @@ private fun ToolsMenuButton(
     onRequestSettingsPanel: () -> Unit
 ) {
     var showTools by remember { mutableStateOf(false) }
+    val pinnedTools by remember(viewModel) { viewModel.uiState.map { it.pinnedTools }.distinctUntilChanged() }.collectAsState(emptyList())
     val isBucketFill = drawingMode is DrawingMode.BucketFill
     val isSelectionMode = drawingMode.isSelectionTool()
     val isActive = showTools || isBucketFill || isLazyModeActive || isSelectionMode || drawingMode is DrawingMode.Gradient
-
-    // Icon reflects the active extra tool so it stays visible while the menu is closed
-    val icon = when {
-        isBucketFill -> Icons.Rounded.FormatColorFill
-        drawingMode is DrawingMode.Gradient -> Icons.Rounded.Gradient
-        drawingMode is DrawingMode.SelectLasso -> Icons.Rounded.Polyline
-        drawingMode is DrawingMode.SelectRect -> Icons.Rounded.HighlightAlt
-        drawingMode is DrawingMode.SelectWand -> Icons.Rounded.AutoFixHigh
-        drawingMode is DrawingMode.SelectColor -> Icons.Rounded.Palette
-        isLazyModeActive -> Icons.Rounded.Stream
-        else -> Icons.Rounded.Architecture
-    }
 
     Box {
         IconButton(
@@ -431,7 +420,10 @@ private fun ToolsMenuButton(
                 contentColor = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
             )
         ) {
-            Icon(icon, contentDescription = "Tools")
+            // A fixed glyph: this button used to morph into whichever extra tool was on, which
+            // made the one permanent entry point to the tools menu look like a different
+            // control depending on state. The tinted container still says a tool is active.
+            Icon(Icons.Rounded.Architecture, contentDescription = "Tools")
         }
         DropdownMenu(
             expanded = showTools,
@@ -455,7 +447,11 @@ private fun ToolsMenuButton(
 
                 Text("Paint", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    ExtraToolItem("Fill", isBucketFill, Icons.Rounded.FormatColorFill) {
+                    ExtraToolItem(
+                        "Fill", isBucketFill, Icons.Rounded.FormatColorFill,
+                        isPinned = pinnedTools.contains(PinnableTool.Fill),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Fill) }
+                    ) {
                         // Both of these toggle, so read the outcome before calling: turning a
                         // tool off must not pop open the panel holding its options.
                         val turningOn = !isBucketFill
@@ -463,11 +459,19 @@ private fun ToolsMenuButton(
                         if (turningOn) onRequestSettingsPanel()
                         showTools = false
                     }
-                    ExtraToolItem("Gradient", drawingMode is DrawingMode.Gradient, Icons.Rounded.Gradient) {
+                    ExtraToolItem(
+                        "Gradient", drawingMode is DrawingMode.Gradient, Icons.Rounded.Gradient,
+                        isPinned = pinnedTools.contains(PinnableTool.Gradient),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Gradient) }
+                    ) {
                         viewModel.setDrawingMode(if (drawingMode is DrawingMode.Gradient) DrawingMode.Freehand else DrawingMode.Gradient)
                         showTools = false
                     }
-                    ExtraToolItem("Lazy", isLazyModeActive, Icons.Rounded.Stream) {
+                    ExtraToolItem(
+                        "Lazy", isLazyModeActive, Icons.Rounded.Stream,
+                        isPinned = pinnedTools.contains(PinnableTool.Lazy),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Lazy) }
+                    ) {
                         val turningOn = !isLazyModeActive
                         viewModel.toggleLazyMode()
                         if (turningOn) onRequestSettingsPanel()
@@ -479,19 +483,35 @@ private fun ToolsMenuButton(
 
                 Text("Select", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    ExtraToolItem("Lasso", drawingMode is DrawingMode.SelectLasso, Icons.Rounded.Polyline) {
+                    ExtraToolItem(
+                        "Lasso", drawingMode is DrawingMode.SelectLasso, Icons.Rounded.Polyline,
+                        isPinned = pinnedTools.contains(PinnableTool.Lasso),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Lasso) }
+                    ) {
                         viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectLasso) DrawingMode.Freehand else DrawingMode.SelectLasso)
                         showTools = false
                     }
-                    ExtraToolItem("Rect", drawingMode is DrawingMode.SelectRect, Icons.Rounded.HighlightAlt) {
+                    ExtraToolItem(
+                        "Rect", drawingMode is DrawingMode.SelectRect, Icons.Rounded.HighlightAlt,
+                        isPinned = pinnedTools.contains(PinnableTool.Rect),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Rect) }
+                    ) {
                         viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectRect) DrawingMode.Freehand else DrawingMode.SelectRect)
                         showTools = false
                     }
-                    ExtraToolItem("Wand", drawingMode is DrawingMode.SelectWand, Icons.Rounded.AutoFixHigh) {
+                    ExtraToolItem(
+                        "Wand", drawingMode is DrawingMode.SelectWand, Icons.Rounded.AutoFixHigh,
+                        isPinned = pinnedTools.contains(PinnableTool.Wand),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Wand) }
+                    ) {
                         viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectWand) DrawingMode.Freehand else DrawingMode.SelectWand)
                         showTools = false
                     }
-                    ExtraToolItem("Color", drawingMode is DrawingMode.SelectColor, Icons.Rounded.Palette) {
+                    ExtraToolItem(
+                        "Color", drawingMode is DrawingMode.SelectColor, Icons.Rounded.Palette,
+                        isPinned = pinnedTools.contains(PinnableTool.ColorSelect),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.ColorSelect) }
+                    ) {
                         viewModel.setDrawingMode(if (drawingMode is DrawingMode.SelectColor) DrawingMode.Freehand else DrawingMode.SelectColor)
                         showTools = false
                     }

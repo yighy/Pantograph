@@ -109,6 +109,10 @@ class DrawingViewModel(
             .onEach { sensitivity -> _uiState.update { it.copy(satelliteGateSensitivity = sensitivity) } }
             .launchIn(viewModelScope)
 
+        preferenceManager.pinnedTools
+            .onEach { names -> _uiState.update { it.copy(pinnedTools = PinnableTool.fromNames(names)) } }
+            .launchIn(viewModelScope)
+
         preferenceManager.colorHistory
             .onEach { history -> 
                 val colors = history.mapNotNull { 
@@ -906,9 +910,20 @@ class DrawingViewModel(
                 state.floatingBitmap != null -> Unit
                 // Pen down inside a closed selection: lift it so it can be moved
                 state.isSelectionClosed && isPointInSelection(pos, state) -> liftSelection(cut = true)
-                // Wand/Color: a tap computes the pixel selection at the cursor
-                state.drawingMode is DrawingMode.SelectWand -> computeMagicSelection(pos, contiguous = true)
-                state.drawingMode is DrawingMode.SelectColor -> computeMagicSelection(pos, contiguous = false)
+                // Wand/Color: a tap computes the pixel selection at the cursor. These finish
+                // on the spot - there is no outline being traced and nothing to hold open -
+                // so the pen must not latch. Tapping the canvas goes through togglePen(),
+                // which has no matching release, and a latch there left the pen stuck down
+                // until the next tap. (From the FAB it was invisible: that gesture always
+                // issues its own pen-up when the finger lifts.)
+                state.drawingMode is DrawingMode.SelectWand -> {
+                    computeMagicSelection(pos, contiguous = true)
+                    return
+                }
+                state.drawingMode is DrawingMode.SelectColor -> {
+                    computeMagicSelection(pos, contiguous = false)
+                    return
+                }
                 // Lasso/Rect: start tracing a new outline
                 else -> {
                     rectAnchor = pos
@@ -1721,6 +1736,12 @@ class DrawingViewModel(
 
     fun setLazyRadius(radius: Float) {
         _uiState.update { it.copy(lazyRadius = radius) }
+    }
+
+    /** Pins or unpins a tool on the quick-access satellite. */
+    fun togglePinnedTool(tool: PinnableTool) {
+        val next = PinnableTool.togglePin(_uiState.value.pinnedTools, tool)
+        viewModelScope.launch { preferenceManager.setPinnedTools(PinnableTool.toNames(next)) }
     }
 
     fun pickColorFromCanvas(pos: Offset) {

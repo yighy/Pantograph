@@ -116,7 +116,9 @@ data class DrawingState(
     // Scales the right satellite's vertical drag response: below 1 = longer travel + wider
     // dead zone (safer, coarser), above 1 = shorter travel + narrower dead zone (twitchier)
     val satelliteGateSensitivity: Float = 1f,
-    
+    /** Tools on the quick-access satellite, first is the one a plain tap fires. */
+    val pinnedTools: List<PinnableTool> = emptyList(),
+
     val canvasScale: Float = 1f,
     val canvasOffset: Offset = Offset.Zero,
     val canvasRotation: Float = 0f,

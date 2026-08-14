@@ -116,6 +116,70 @@ class GateMathTest {
         }
     }
 
+    // ---- quadrant gates ----
+
+    private val trail = 44f
+
+    @Test
+    fun `nothing is selected until the finger leaves the dead zone`() {
+        assertEquals(-1, GateMath.quadrant(0f, 0f, 18f))
+        assertEquals(-1, GateMath.quadrant(10f, 10f, 18f))
+        assertTrue(GateMath.quadrant(30f, 30f, 18f) >= 0)
+    }
+
+    @Test
+    fun `quadrants run left to right, top row first`() {
+        assertEquals(0, GateMath.quadrant(-50f, -50f, 18f))
+        assertEquals(1, GateMath.quadrant(50f, -50f, 18f))
+        assertEquals(2, GateMath.quadrant(-50f, 50f, 18f))
+        assertEquals(3, GateMath.quadrant(50f, 50f, 18f))
+    }
+
+    @Test
+    fun `the anchor stays put while the finger is close to it`() {
+        val a = GateMath.trailAnchor(100f, 100f, 120f, 110f, trail)
+        assertEquals(100f, a.x, 0.01f)
+        assertEquals(100f, a.y, 0.01f)
+    }
+
+    @Test
+    fun `the anchor is dragged along, never further than the radius behind`() {
+        val a = GateMath.trailAnchor(0f, 0f, 300f, 0f, trail)
+        assertEquals(300f - trail, a.x, 0.01f)
+        assertEquals(0f, a.y, 0.01f)
+    }
+
+    @Test
+    fun `changing your mind costs the same however far you first went`() {
+        // The bug: with a fixed anchor, a long drag into one corner had to be retraced in full
+        // before the opposite corner could be selected. With a trailing anchor the return trip
+        // is bounded by the radius, no matter how far the outward journey was.
+        for (outward in listOf(100f, 400f, 1200f)) {
+            var anchor = GateMath.Anchor(0f, 0f)
+            var x = 0f
+            var y = 0f
+            // Head for the bottom-right corner.
+            while (x < outward) {
+                x += 8f; y += 8f
+                anchor = GateMath.trailAnchor(anchor.x, anchor.y, x, y, trail)
+            }
+            assertEquals("outward $outward should have selected bottom-right", 3,
+                GateMath.quadrant(x - anchor.x, y - anchor.y, 18f))
+
+            // Now reverse, and count how far it takes to land on the opposite cell.
+            var travelled = 0f
+            while (GateMath.quadrant(x - anchor.x, y - anchor.y, 18f) != 0 && travelled < 10_000f) {
+                x -= 8f; y -= 8f
+                travelled += 8f
+                anchor = GateMath.trailAnchor(anchor.x, anchor.y, x, y, trail)
+            }
+            assertTrue(
+                "after going out $outward the reversal took $travelled",
+                travelled <= 4 * trail
+            )
+        }
+    }
+
     // ---- column hysteresis ----
 
     private val colStep = 56f
@@ -144,6 +208,48 @@ class GateMathTest {
                 "jitter at $x should have held column 1",
                 committed,
                 GateMath.nextColumn(committed, x, colStep, hysteresis)
+            )
+        }
+    }
+
+    @Test
+    fun `the column anchor holds still while the drag is within the row`() {
+        // minRel -1, maxRel 2: half a column of slack either side of that is fair game.
+        assertEquals(0f, GateMath.clampColumnAnchor(0f, 100f, colStep, -1, 2), 0.01f)
+        assertEquals(0f, GateMath.clampColumnAnchor(0f, -50f, colStep, -1, 2), 0.01f)
+    }
+
+    @Test
+    fun `overshooting the row pulls the anchor along instead of banking the travel`() {
+        // Sweep far past the last column: the anchor follows so the drag reads as just beyond
+        // the end, not as the several columns' worth of travel actually covered.
+        val overshoot = 10 * colStep
+        val anchor = GateMath.clampColumnAnchor(0f, overshoot, colStep, 0, 3)
+        assertEquals(3.5f * colStep, overshoot - anchor, 0.01f)
+    }
+
+    @Test
+    fun `reversing after a wild overshoot moves a column almost immediately`() {
+        // The bug: every pixel spent beyond the last column had to be retraced before the
+        // selection would come back. Bounded now, however far the overshoot went.
+        for (overshoot in listOf(3f, 10f, 40f).map { it * colStep }) {
+            var anchor = 0f
+            var x = 0f
+            while (x < overshoot) {
+                x += 8f
+                anchor = GateMath.clampColumnAnchor(anchor, x, colStep, 0, 3)
+            }
+            assertEquals(3, GateMath.nextColumn(3, x - anchor, colStep, hysteresis))
+
+            var travelled = 0f
+            while (GateMath.nextColumn(3, x - anchor, colStep, hysteresis) == 3 && travelled < 10_000f) {
+                x -= 8f
+                travelled += 8f
+                anchor = GateMath.clampColumnAnchor(anchor, x, colStep, 0, 3)
+            }
+            assertTrue(
+                "overshoot ${overshoot}px took ${travelled}px to give a column back",
+                travelled <= 2 * colStep
             )
         }
     }

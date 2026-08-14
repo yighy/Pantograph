@@ -4,7 +4,9 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -27,7 +29,9 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -363,11 +367,39 @@ fun ExtraToolItem(
     label: String,
     selected: Boolean,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
+    // Long-press pins this tool to the quick-access satellite. Pinning lives here, where the
+    // entries are labelled and have room, rather than on the satellite itself - a press-and-
+    // hold there would collide with the drag idiom the other two satellites teach.
+    isPinned: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
+    // Last so the trailing lambda at the call sites still binds to it.
     onClick: () -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        // The Text below is the accessible name, so the icon stays decorative.
-        ToolToggleButton(selected = selected, onClick = onClick, icon = icon, contentDescription = null)
+        Box {
+            // The Text below is the accessible name, so the icon stays decorative.
+            ToolToggleButton(
+                selected = selected,
+                onClick = onClick,
+                icon = icon,
+                contentDescription = null,
+                onLongClick = onTogglePin?.let {
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        it()
+                    }
+                }
+            )
+            if (isPinned) {
+                Icon(
+                    Icons.Rounded.PushPin,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.TopEnd).size(12.dp)
+                )
+            }
+        }
         Text(label, style = MaterialTheme.typography.labelSmall)
     }
 }
@@ -385,6 +417,7 @@ private fun ToolbarSeparator() {
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 fun ToolToggleButton(
     selected: Boolean,
     onClick: () -> Unit,
@@ -393,7 +426,8 @@ fun ToolToggleButton(
     // otherwise this is the button's only name for screen readers.
     contentDescription: String?,
     selectedColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
-    selectedContainerColor: Color = MaterialTheme.colorScheme.primaryContainer
+    selectedContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    onLongClick: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -402,7 +436,17 @@ fun ToolToggleButton(
             // Exposed as a selectable button so TalkBack announces the open/closed state
             // of the panel this toggle controls, not just its name.
             .semantics { this.selected = selected }
-            .clickable(onClick = onClick, role = Role.Button),
+            .then(
+                if (onLongClick == null) {
+                    Modifier.clickable(onClick = onClick, role = Role.Button)
+                } else {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                        role = Role.Button
+                    )
+                }
+            ),
         contentAlignment = Alignment.Center
     ) {
         if (selected) {

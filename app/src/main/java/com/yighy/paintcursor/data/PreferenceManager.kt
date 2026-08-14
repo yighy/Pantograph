@@ -37,6 +37,16 @@ class PreferenceManager(private val context: Context) {
         val VELOCITY_ENABLED_KEY = booleanPreferencesKey("velocity_enabled")
         val OFFSCREEN_CURSOR_ARROW_KEY = booleanPreferencesKey("offscreen_cursor_arrow")
         val SATELLITE_GATE_SENSITIVITY_KEY = floatPreferencesKey("satellite_gate_sensitivity")
+        val PINNED_TOOL_KEY = stringPreferencesKey("pinned_tool")
+    }
+
+    /**
+     * Comma-separated names of the tools pinned to the quick-access satellite, or null for an
+     * empty slot. Stored raw so this layer stays unaware of the drawing package's enum - the
+     * ViewModel resolves it, and unknown names simply drop out.
+     */
+    val pinnedTools: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PINNED_TOOL_KEY]
     }
 
     val appTheme: Flow<AppTheme> = context.dataStore.data.map { preferences ->
@@ -250,6 +260,13 @@ class PreferenceManager(private val context: Context) {
     suspend fun setSatelliteGateSensitivity(sensitivity: Float) {
         context.dataStore.edit { preferences ->
             preferences[SATELLITE_GATE_SENSITIVITY_KEY] = sensitivity
+        }
+    }
+
+    suspend fun setPinnedTools(toolNames: String?) {
+        context.dataStore.edit { preferences ->
+            if (toolNames == null) preferences.remove(PINNED_TOOL_KEY)
+            else preferences[PINNED_TOOL_KEY] = toolNames
         }
     }
 }

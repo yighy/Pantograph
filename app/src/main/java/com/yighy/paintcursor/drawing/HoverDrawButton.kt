@@ -185,31 +185,51 @@ fun HoverDrawButton(
                 }
                 .size(fabSizeSetting.dp)
         ) {
+            // One `when` for the glyph, its spoken name and both colours. They used to be
+            // three separate whens over different case sets, which is how the selection tools
+            // ended up with no representation at all and bucket fill with only half of one -
+            // arm the wand and the button still looked exactly like plain drawing.
+            val armed: Triple<ImageVector, String, Color>? = when {
+                isEyeDropperMode ->
+                    Triple(Icons.Rounded.Colorize, "Eyedropper active", MaterialTheme.colorScheme.secondaryContainer)
+                drawingMode is DrawingMode.BucketFill ->
+                    Triple(Icons.Rounded.FormatColorFill, "Bucket fill active", MaterialTheme.colorScheme.primaryContainer)
+                drawingMode is DrawingMode.Gradient ->
+                    Triple(Icons.Rounded.Gradient, "Gradient active", MaterialTheme.colorScheme.primaryContainer)
+                drawingMode is DrawingMode.SelectLasso ->
+                    Triple(Icons.Rounded.Polyline, "Lasso select active", MaterialTheme.colorScheme.primaryContainer)
+                drawingMode is DrawingMode.SelectRect ->
+                    Triple(Icons.Rounded.HighlightAlt, "Rectangle select active", MaterialTheme.colorScheme.primaryContainer)
+                drawingMode is DrawingMode.SelectWand ->
+                    Triple(Icons.Rounded.AutoFixHigh, "Magic wand active", MaterialTheme.colorScheme.primaryContainer)
+                drawingMode is DrawingMode.SelectColor ->
+                    Triple(Icons.Rounded.Palette, "Colour select active", MaterialTheme.colorScheme.primaryContainer)
+                else -> null
+            }
+            // Pressed always reads the same whatever tool is armed, so the identity lives in
+            // the glyph and the "a stroke is happening" signal stays in the colour.
+            val container = when {
+                isPenDown -> MaterialTheme.colorScheme.errorContainer
+                armed != null -> armed.third
+                else -> MaterialTheme.colorScheme.tertiaryContainer
+            }
+            val fabIcon = armed?.first
+                ?: if (isPenDown) Icons.Default.Edit else Icons.Default.TouchApp
+            val fabDescription = armed?.second
+                ?: if (isPenDown) "Drawing" else "Hold to draw"
+
             FloatingActionButton(
                 onClick = { },
                 modifier = Modifier.fillMaxSize(),
                 shape = RoundedCornerShape(28), // Percentage based shape for expressive look at all sizes
-                containerColor = when {
-                    isEyeDropperMode -> MaterialTheme.colorScheme.secondaryContainer
-                    isPenDown -> MaterialTheme.colorScheme.errorContainer 
-                    else -> MaterialTheme.colorScheme.tertiaryContainer
-                },
-                contentColor = when {
-                    isEyeDropperMode -> MaterialTheme.colorScheme.onSecondaryContainer
-                    isPenDown -> MaterialTheme.colorScheme.onErrorContainer 
-                    else -> MaterialTheme.colorScheme.onTertiaryContainer
-                }
+                containerColor = container,
+                contentColor = contentColorFor(container)
             ) {
                 val iconSize = (fabSizeSetting * 0.45f).dp
                 // Icon and its spoken name travel together as one state, so the announced
                 // label can't lag behind the glyph mid-transition.
                 AnimatedContent(
-                    targetState = when {
-                        isEyeDropperMode -> Icons.Rounded.Colorize to "Eyedropper active"
-                        drawingMode is DrawingMode.BucketFill -> Icons.Rounded.FormatColorFill to "Bucket fill active"
-                        isPenDown -> Icons.Default.Edit to "Drawing"
-                        else -> Icons.Default.TouchApp to "Hold to draw"
-                    },
+                    targetState = fabIcon to fabDescription,
                     transitionSpec = {
                         scaleIn() + fadeIn() togetherWith scaleOut() + fadeOut()
                     },
@@ -240,11 +260,26 @@ fun HoverDrawButton(
         val fabX = localX.coerceIn(0f, (screenWidth - fabSizePx).coerceAtLeast(0f))
         val fabY = localY.coerceIn(0f, (screenHeight - fabSizePx).coerceAtLeast(0f))
 
-        // Satellites flip to the opposite side when the FAB touches a screen edge
-        val rightSatX = if (fabX + fabSizePx + gapPx + miniThicknessPx <= screenWidth) fabX + fabSizePx + gapPx else fabX - gapPx - miniThicknessPx
-        val rightSatY = fabY
-        val bottomSatX = fabX
-        val bottomSatY = if (fabY + fabSizePx + gapPx + miniThicknessPx <= screenHeight) fabY + fabSizePx + gapPx else fabY - gapPx - miniThicknessPx
+        // Satellites flip away from screen edges; see SatelliteLayout for the rules and the
+        // tests that pin down the corner cases.
+        val placement = SatelliteLayout.place(
+            fabX = fabX,
+            fabY = fabY,
+            fabSizePx = fabSizePx,
+            miniPx = miniThicknessPx,
+            gapPx = gapPx,
+            screenWidth = screenWidth,
+            screenHeight = screenHeight
+        )
+        val rightSatX = placement.levelsX
+        val rightSatY = placement.levelsY
+        val bottomSatX = placement.modeX
+        val bottomSatY = placement.modeY
+        val toolSatX = placement.toolX
+        val toolSatY = placement.toolY
+        // Turned on its side when it falls back to a flank rather than stacking.
+        val toolSatWidthDp = if (placement.toolStacked) fabSizeSetting else miniThicknessDp
+        val toolSatHeightDp = if (placement.toolStacked) miniThicknessDp else fabSizeSetting
 
         // Satellites clear out while the FAB is held: mid-stroke they are dead weight beside
         // the cursor, and a stray second finger landing on one would change the brush in the
@@ -350,6 +385,10 @@ fun HoverDrawButton(
                         // +-0.5 step + hysteresis on either side of the committed column,
                         // instead of re-triggering right at the boundary on the tiniest jitter
                         var committedRel = 0
+                        // Sideways anchor, clamped each event so travel past either end of the
+                        // row isn't banked against the way back - the same reason the vertical
+                        // axis re-anchors when its value pins against a limit.
+                        var anchorX = down.position.x
                         var anchorY = down.position.y
                         var anchorValue = params[index].read(viewModel.uiState.value)
                         brushGateValue = anchorValue
@@ -369,8 +408,16 @@ fun HoverDrawButton(
                             change.consume()
                             brushGateFingerLocalX = change.position.x
                             brushGateFingerLocalY = change.position.y
-                            val drag = change.position - down.position
-                            val newRel = GateMath.nextColumn(committedRel, drag.x, colStepPx, colHysteresisPx)
+                            anchorX = GateMath.clampColumnAnchor(
+                                anchorX = anchorX,
+                                fingerX = change.position.x,
+                                colStepPx = colStepPx,
+                                minRel = -startIndex,
+                                maxRel = params.size - 1 - startIndex
+                            )
+                            val newRel = GateMath.nextColumn(
+                                committedRel, change.position.x - anchorX, colStepPx, colHysteresisPx
+                            )
                             val newIndex = (startIndex + newRel).coerceIn(0, params.size - 1)
                             if (newIndex != index) {
                                 // Gear change: re-anchor the vertical axis on the new param's
@@ -523,6 +570,8 @@ fun HoverDrawButton(
                         if (viewModel.uiState.value.isPenDown) return@awaitEachGesture
                         down.consume()
                         val deadZonePx = 18.dp.toPx()
+                        val trailPx = GateMath.ANCHOR_TRAIL_RADIUS_DP.dp.toPx()
+                        var anchor = GateMath.Anchor(down.position.x, down.position.y)
                         modeGateCell = -1
                         modeGateFingerLocalX = down.position.x
                         modeGateFingerLocalY = down.position.y
@@ -540,10 +589,15 @@ fun HoverDrawButton(
                             change.consume()
                             modeGateFingerLocalX = change.position.x
                             modeGateFingerLocalY = change.position.y
-                            val drag = change.position - down.position
-                            val newCell = if (drag.getDistance() < deadZonePx) -1 else {
-                                (if (drag.y < 0f) 0 else 2) + (if (drag.x < 0f) 0 else 1)
-                            }
+                            anchor = GateMath.trailAnchor(
+                                anchor.x, anchor.y,
+                                change.position.x, change.position.y, trailPx
+                            )
+                            val newCell = GateMath.quadrant(
+                                change.position.x - anchor.x,
+                                change.position.y - anchor.y,
+                                deadZonePx
+                            )
                             // Ticks on the way back to neutral too, so you can feel that
                             // releasing here would apply nothing.
                             if (newCell != modeGateCell) {
@@ -607,6 +661,140 @@ fun HoverDrawButton(
             }
         }
 
+        // ---- Tool satellite: one pinned tool, one tap ----
+        // Up to four pinned tools, picked with the same sideways drag the brush gate uses for
+        // its four parameters - same hysteresis, same one-column-per-event rule. Releasing
+        // without having moved leaves the index at 0, so a plain tap still fires the first
+        // pinned tool and the simple case costs no gesture at all.
+        val pinnedTools by remember(viewModel) { viewModel.uiState.map { it.pinnedTools }.distinctUntilChanged() }.collectAsState(emptyList())
+        // Derived in the flow rather than read off uiState.value in composition, so the pill
+        // actually recolours when the tool is turned on or off from anywhere else.
+        val toolGateActiveFlags by remember(viewModel) {
+            viewModel.uiState.map { state -> state.pinnedTools.map { it.isActive(state) } }.distinctUntilChanged()
+        }.collectAsState(emptyList())
+
+        var toolGateActive by remember { mutableStateOf(false) }
+        var toolGateCell by remember { mutableIntStateOf(-1) }
+        var toolGateFingerLocalX by remember { mutableFloatStateOf(0f) }
+        var toolGateFingerLocalY by remember { mutableFloatStateOf(0f) }
+
+        // The pill itself only reports "is any pinned tool currently on", since its glyph no
+        // longer names a particular one. Which tool is which is the panel's job.
+        val anyPinnedToolActive = toolGateActiveFlags.any { it }
+
+        val toolSatScale by animateFloatAsState(
+            targetValue = if (toolGateActive) 1.08f else 1f,
+            animationSpec = MotionTokens.pulse,
+            label = "toolSatScale"
+        )
+        val toolSatBg by animateColorAsState(
+            targetValue = when {
+                toolGateActive || anyPinnedToolActive -> MaterialTheme.colorScheme.primary
+                pinnedTools.isEmpty() -> MaterialTheme.colorScheme.surfaceContainerHigh
+                else -> MaterialTheme.colorScheme.secondaryContainer
+            },
+            animationSpec = MotionTokens.colorTransition,
+            label = "toolSatBg"
+        )
+        val toolSatTint by animateColorAsState(
+            targetValue = when {
+                toolGateActive || anyPinnedToolActive -> MaterialTheme.colorScheme.onPrimary
+                pinnedTools.isEmpty() -> MaterialTheme.colorScheme.onSurfaceVariant
+                else -> MaterialTheme.colorScheme.onSecondaryContainer
+            },
+            animationSpec = MotionTokens.colorTransition,
+            label = "toolSatTint"
+        )
+
+        val toolGateActions = pinnedTools.map { tool ->
+            CustomAccessibilityAction(tool.label) { tool.toggle(viewModel); true }
+        }
+
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(toolSatX.roundToInt(), toolSatY.roundToInt()) }
+                .scale(satelliteScale * toolSatScale)
+                .alpha(satelliteAlpha)
+                .size(toolSatWidthDp.dp, toolSatHeightDp.dp)
+                .semantics {
+                    contentDescription = pinnedTools.firstOrNull()
+                        ?.let { "Quick tools, ${pinnedTools.size} pinned, first is ${it.label}" }
+                        ?: "Quick tool slot, empty"
+                    customActions = toolGateActions
+                }
+                .shadow(4.dp, satShape)
+                .clip(satShape)
+                .background(toolSatBg)
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val tools = viewModel.uiState.value.pinnedTools
+                        if (viewModel.uiState.value.isPenDown || tools.isEmpty()) {
+                            return@awaitEachGesture
+                        }
+                        down.consume()
+                        // Quadrant off the touch-down point, exactly like the mode gate. A
+                        // direction costs no travel, so unlike the column sweep this used to
+                        // be, it cannot be squeezed out by a screen edge however the button
+                        // is parked. Nothing is selected until the finger leaves the dead
+                        // zone, so letting go without moving does nothing at all.
+                        val deadZonePx = 18.dp.toPx()
+                        val trailPx = GateMath.ANCHOR_TRAIL_RADIUS_DP.dp.toPx()
+                        var anchor = GateMath.Anchor(down.position.x, down.position.y)
+                        toolGateCell = -1
+                        toolGateFingerLocalX = down.position.x
+                        toolGateFingerLocalY = down.position.y
+                        toolGateActive = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.find { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                change.consume()
+                                toolGateFingerLocalX = change.position.x
+                                toolGateFingerLocalY = change.position.y
+                                anchor = GateMath.trailAnchor(
+                                    anchor.x, anchor.y,
+                                    change.position.x, change.position.y, trailPx
+                                )
+                                val cell = GateMath.quadrant(
+                                    change.position.x - anchor.x,
+                                    change.position.y - anchor.y,
+                                    deadZonePx
+                                )
+                                // An empty quadrant reads as neutral rather than as a cell you
+                                // could release on and get nothing from.
+                                val newCell = if (cell >= 0 && cell < tools.size) cell else -1
+                                if (newCell != toolGateCell) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                }
+                                toolGateCell = newCell
+                            }
+                        } finally {
+                            toolGateActive = false
+                        }
+                        val cell = toolGateCell
+                        toolGateCell = -1
+                        tools.getOrNull(cell)?.let {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            it.toggle(viewModel)
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            // Always the pin, never the pinned tool's own glyph. A satellite that morphs into
+            // whatever is pinned loses its identity - you can no longer tell at a glance which
+            // pill is which. The tools themselves are named in the panel while you hold it.
+            Icon(
+                imageVector = Icons.Rounded.PushPin,
+                contentDescription = null,
+                tint = toolSatTint,
+                modifier = Modifier.size((miniThicknessDp * 0.55f).dp)
+            )
+        }
+
         // ---- Overlays (drawn above everything, no pointer input: the satellite owns the gesture) ----
         // AnimatedVisibility must stay unconditionally in the tree (not behind an `if`) so
         // its internal transition state survives across toggles - that's what lets it play
@@ -641,6 +829,22 @@ fun HoverDrawButton(
                 isEraserMode = isEraserMode,
                 fingerX = bottomSatX + modeGateFingerLocalX,
                 fingerY = bottomSatY + modeGateFingerLocalY,
+                screenWidth = screenWidth,
+                screenHeight = screenHeight
+            )
+        }
+        AnimatedVisibility(
+            visible = toolGateActive,
+            enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
+                fadeIn(tween(120)),
+            exit = scaleOut(MotionTokens.expressiveExit, transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
+        ) {
+            ToolGatePanel(
+                tools = pinnedTools,
+                activeFlags = toolGateActiveFlags,
+                hoveredCell = toolGateCell,
+                fingerX = toolSatX + toolGateFingerLocalX,
+                fingerY = toolSatY + toolGateFingerLocalY,
                 screenWidth = screenWidth,
                 screenHeight = screenHeight
             )
@@ -873,3 +1077,113 @@ private fun ModeGateBubble(label: String, icon: ImageVector, hovered: Boolean, a
     }
 }
 
+
+/**
+ * Readout for the tool gate: the four pins laid out as a 2x2, mirroring the mode gate so the
+ * two satellites are worked the same way. Follows the finger and stays clear of it.
+ */
+@Composable
+private fun ToolGatePanel(
+    tools: List<PinnableTool>,
+    activeFlags: List<Boolean>,
+    hoveredCell: Int,
+    fingerX: Float,
+    fingerY: Float,
+    screenWidth: Float,
+    screenHeight: Float
+) {
+    if (tools.isEmpty()) return
+    val density = LocalDensity.current
+    val panelW = 248.dp
+    val panelH = 100.dp
+    val panelWPx = with(density) { panelW.toPx() }
+    val panelHPx = with(density) { panelH.toPx() }
+    val fingerGapPx = with(density) { 56.dp.toPx() }
+    val px = (fingerX - panelWPx / 2f).coerceIn(0f, (screenWidth - panelWPx).coerceAtLeast(0f))
+    val above = fingerY - panelHPx - fingerGapPx
+    val py = (if (above >= 0f) above else fingerY + fingerGapPx)
+        .coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
+
+    // Staggered pop-in, same treatment as the mode gate's bubbles
+    val bubbleVisible = remember { mutableStateListOf(false, false, false, false) }
+    LaunchedEffect(Unit) {
+        bubbleVisible.indices.forEach { i ->
+            launch {
+                delay(i * 30L)
+                bubbleVisible[i] = true
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(px.roundToInt(), py.roundToInt()) }
+            .size(panelW, panelH)
+            .zIndex(3f),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ToolGateBubble(tools.getOrNull(0), activeFlags.getOrNull(0) == true, hoveredCell == 0, bubbleVisible[0])
+                ToolGateBubble(tools.getOrNull(1), activeFlags.getOrNull(1) == true, hoveredCell == 1, bubbleVisible[1])
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ToolGateBubble(tools.getOrNull(2), activeFlags.getOrNull(2) == true, hoveredCell == 2, bubbleVisible[2])
+                ToolGateBubble(tools.getOrNull(3), activeFlags.getOrNull(3) == true, hoveredCell == 3, bubbleVisible[3])
+            }
+        }
+    }
+}
+
+/** A null [tool] is an unfilled quadrant: shown so the grid keeps its shape, but inert. */
+@Composable
+private fun ToolGateBubble(tool: PinnableTool?, isOn: Boolean, hovered: Boolean, visible: Boolean) {
+    val bgColor by animateColorAsState(
+        targetValue = when {
+            tool == null -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.4f)
+            hovered -> MaterialTheme.colorScheme.primary
+            isOn -> MaterialTheme.colorScheme.secondaryContainer
+            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        animationSpec = MotionTokens.colorTransition
+    )
+    val contentColor by animateColorAsState(
+        targetValue = when {
+            tool == null -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+            hovered -> MaterialTheme.colorScheme.onPrimary
+            isOn -> MaterialTheme.colorScheme.onSecondaryContainer
+            else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = MotionTokens.colorTransition
+    )
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = bgColor,
+            shadowElevation = if (tool == null) 0.dp else 4.dp,
+            tonalElevation = if (tool == null) 0.dp else 2.dp
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Icon(
+                    tool?.icon ?: Icons.Rounded.Add,
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    tool?.label ?: "Empty",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (hovered) FontWeight.Bold else FontWeight.Medium,
+                    color = contentColor
+                )
+            }
+        }
+    }
+}

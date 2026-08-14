@@ -31,12 +31,15 @@ The app allows you to draw by driving a **precision cursor** on the screen. Your
 
 ### Satellite gates
 
-Two small pills sit beside the floating button and are worked without looking away from the canvas. Both fade out while you're drawing so they can't be hit mid-stroke.
+Three small pills sit beside the floating button and are worked without looking away from the canvas. They fade out while you're drawing so they can't be hit mid-stroke, and reposition themselves as you drag the button around — flipping to the opposite side, or onto a free flank, rather than running off the screen.
 
 - **Right pill — brush levels.** Hold and drag: sideways picks between size, softness, opacity and flow; up and down sets the level. A live readout follows your hand, staying clear of it.
 - **Bottom pill — drawing mode.** Hold and drag towards one of four cells: freehand or straight line, eraser off or on. It applies on release.
+- **Third pill — quick tools.** Hold and drag towards one of four cells, same as the mode pill. Long-press any entry in the tools menu to pin or unpin it — pinning a fifth drops the oldest.
 
-Both gates start from a dead zone (no jump when you touch down), respond finely near the anchor and faster at full stretch, and tick haptically on each step so you can feel where you are with your finger covering the readout. Response distance is tunable in Settings.
+The gates start from a dead zone, so nothing is selected until the finger commits to a direction and letting go without moving does nothing. They tick haptically on each step, so you can feel where you are with your finger covering the readout. The brush gate responds finely near the anchor and faster at full stretch; its travel is tunable in Settings.
+
+Four is the ceiling on the quick-tool pill because that is what a quadrant holds — and a direction costs no travel, so a cell stays reachable however the button is parked. The rest of the tools stay in the menu, where they have labels.
 
 ## ✨ Features
 
@@ -86,9 +89,15 @@ Release builds are signed through a local `keystore.properties` file (see `keyst
 ./gradlew testDebugUnitTest
 ```
 
-The gesture arithmetic behind the satellite gates (`GateMath`) and the rules deciding what
-history a floating selection needs when it lands (`SelectionCommitPolicy`) are kept free of
-Android types so they can be covered by plain JVM tests.
+The parts where a mistake is invisible until it bites are kept free of Android types, so plain
+JVM tests can cover them:
+
+- `GateMath` — dead zone, response curve and column hysteresis behind the satellite gates.
+- `SatelliteLayout` — where the three pills land for any button position and screen size,
+  including the sweep asserting that no two ever overlap.
+- `SelectionCommitPolicy` — which layers need a history entry when a floating selection lands.
+- `PinnableTool` — parsing and toggling the persisted quick-tool pins, including the value
+  format written by earlier builds.
 
 ## 👩‍💻 Tech Stack
 

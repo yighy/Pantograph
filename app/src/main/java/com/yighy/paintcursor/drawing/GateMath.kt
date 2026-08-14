@@ -1,6 +1,7 @@
 package com.yighy.paintcursor.drawing
 
 import kotlin.math.abs
+import kotlin.math.hypot
 import kotlin.math.pow
 import kotlin.math.sign
 
@@ -71,11 +72,75 @@ object GateMath {
         }
     }
 
+    /** Touch-down point a quadrant gate measures its direction from. */
+    data class Anchor(val x: Float, val y: Float)
+
+    /**
+     * How far the anchor is allowed to lag behind the finger. Also the distance a reversal has
+     * to cover before the quadrant flips, so it wants to be comfortably clear of the dead zone
+     * without being a journey.
+     */
+    const val ANCHOR_TRAIL_RADIUS_DP = 44f
+
+    /**
+     * Drags the anchor along so it never falls further than [maxRadiusPx] behind the finger.
+     *
+     * Without this the anchor is wherever the finger first landed, so changing your mind after
+     * committing to a corner means retracing the entire journey back through that point before
+     * the quadrant will change - the further you went, the longer the way back. Trailing bounds
+     * that return trip to the radius, whatever the outward distance.
+     */
+    fun trailAnchor(
+        anchorX: Float,
+        anchorY: Float,
+        fingerX: Float,
+        fingerY: Float,
+        maxRadiusPx: Float
+    ): Anchor {
+        val dx = fingerX - anchorX
+        val dy = fingerY - anchorY
+        val distance = hypot(dx, dy)
+        if (distance <= maxRadiusPx || distance == 0f) return Anchor(anchorX, anchorY)
+        val pull = (distance - maxRadiusPx) / distance
+        return Anchor(anchorX + dx * pull, anchorY + dy * pull)
+    }
+
+    /**
+     * Quadrant of a drag, or -1 while it is still inside the dead zone. Cells run left to
+     * right, top row first.
+     */
+    fun quadrant(dragX: Float, dragY: Float, deadZonePx: Float): Int =
+        if (hypot(dragX, dragY) < deadZonePx) -1
+        else (if (dragY < 0f) 0 else 2) + (if (dragX < 0f) 0 else 1)
+
     /**
      * Column selection with hysteresis: the threshold sits half a step plus [hysteresisPx]
      * beyond the committed column, so jitter at a boundary can't flip it back and forth.
      * Returns a *relative* column, still to be offset by the starting column and clamped.
      */
+    /**
+     * Pulls a column gate's anchor forward so the drag can't bank travel past the ends of the
+     * row. Sideways is the [GateStep] problem in another guise: sweep well beyond the last
+     * column and every pixel of the overshoot has to be retraced before the column will move
+     * back. Clamping the anchor to half a column outside the row bounds the reversal instead.
+     */
+    fun clampColumnAnchor(
+        anchorX: Float,
+        fingerX: Float,
+        colStepPx: Float,
+        minRel: Int,
+        maxRel: Int
+    ): Float {
+        val lowest = (minRel - 0.5f) * colStepPx
+        val highest = (maxRel + 0.5f) * colStepPx
+        val rel = fingerX - anchorX
+        return when {
+            rel > highest -> fingerX - highest
+            rel < lowest -> fingerX - lowest
+            else -> anchorX
+        }
+    }
+
     fun nextColumn(committedRel: Int, dragX: Float, colStepPx: Float, hysteresisPx: Float): Int {
         val relPos = dragX / colStepPx
         val slack = hysteresisPx / colStepPx
