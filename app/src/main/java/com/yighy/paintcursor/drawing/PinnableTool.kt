@@ -19,10 +19,18 @@ import androidx.compose.ui.graphics.vector.ImageVector
  *
  * Entry names are persisted, so renaming one silently unpins it for existing users.
  */
-enum class PinnableTool(val label: String, val icon: ImageVector) {
-    Fill("Fill", Icons.Rounded.FormatColorFill),
+enum class PinnableTool(
+    val label: String,
+    val icon: ImageVector,
+    /**
+     * Whether switching this tool on should reveal the toolbar's Settings panel, because that
+     * is where its own controls live - tolerance for the fill, radius for lazy.
+     */
+    val opensSettings: Boolean = false
+) {
+    Fill("Fill", Icons.Rounded.FormatColorFill, opensSettings = true),
     Gradient("Gradient", Icons.Rounded.Gradient),
-    Lazy("Lazy", Icons.Rounded.Cable),
+    Lazy("Lazy", Icons.Rounded.Cable, opensSettings = true),
     Lasso("Lasso", Icons.Rounded.Polyline),
     Rect("Rect", Icons.Rounded.HighlightAlt),
     Wand("Wand", Icons.Rounded.AutoFixHigh),
@@ -38,9 +46,17 @@ enum class PinnableTool(val label: String, val icon: ImageVector) {
         ColorSelect -> state.drawingMode is DrawingMode.SelectColor
     }
 
-    /** Mirrors what the matching entry in the tools menu does, including its toggle-off. */
-    fun toggle(viewModel: DrawingViewModel) {
+    /**
+     * Mirrors what the matching entry in the tools menu does, including its toggle-off and the
+     * panel it opens. The callback is passed in because only the screen knows which panel is
+     * showing - without it the satellite armed a tool and left its settings buried, while the
+     * same tool tapped from the menu revealed them.
+     */
+    fun toggle(viewModel: DrawingViewModel, onRequestSettingsPanel: () -> Unit = {}) {
         val wasActive = isActive(viewModel.uiState.value)
+        // Read before the call: these are toggles, and switching one *off* must not pop open
+        // the panel holding its options.
+        if (!wasActive && opensSettings) onRequestSettingsPanel()
         when (this) {
             Fill -> viewModel.setBucketFillMode()
             Lazy -> viewModel.toggleLazyMode()

@@ -233,7 +233,8 @@ fun DrawingScreen(
                 onPositionChanged = { x, y -> 
                     offsetX = x
                     offsetY = y
-                }
+                },
+                onRequestSettingsPanel = { activePanel = ToolbarPanel.Settings }
             )
         }
 

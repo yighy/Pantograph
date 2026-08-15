@@ -69,7 +69,9 @@ fun HoverDrawButton(
     fabSizeSetting: Float,
     initialOffsetX: Float,
     initialOffsetY: Float,
-    onPositionChanged: (Float, Float) -> Unit
+    onPositionChanged: (Float, Float) -> Unit,
+    /** Opens the toolbar's Settings panel, for pinned tools whose own controls live there. */
+    onRequestSettingsPanel: () -> Unit = {}
 ) {
     val fabDragThreshold by remember(viewModel) { viewModel.uiState.map { it.fabDragThreshold }.distinctUntilChanged() }.collectAsState(100f)
     val satelliteGateSensitivity by remember(viewModel) { viewModel.uiState.map { it.satelliteGateSensitivity }.distinctUntilChanged() }.collectAsState(1f)
@@ -707,7 +709,7 @@ fun HoverDrawButton(
         )
 
         val toolGateActions = pinnedTools.map { tool ->
-            CustomAccessibilityAction(tool.label) { tool.toggle(viewModel); true }
+            CustomAccessibilityAction(tool.label) { tool.toggle(viewModel, onRequestSettingsPanel); true }
         }
 
         Box(
@@ -778,7 +780,7 @@ fun HoverDrawButton(
                         toolGateCell = -1
                         tools.getOrNull(cell)?.let {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            it.toggle(viewModel)
+                            it.toggle(viewModel, onRequestSettingsPanel)
                         }
                     }
                 },
@@ -808,8 +810,19 @@ fun HoverDrawButton(
             BrushGatePanel(
                 paramIndex = brushGateParam,
                 value = brushGateValue,
+                // Built by walking the enum rather than listing the values in order: the panel
+                // indexes this by column, so a hand-written list silently mislabels every
+                // bubble the moment the parameters are reordered - which is exactly what
+                // happened when size/opacity/flow/softness were rearranged.
                 currentValues = remember(gateSize, gateSoftness, gateOpacity, gateFlow) {
-                    listOf(gateSize, gateSoftness, gateOpacity, gateFlow)
+                    BrushGateParam.entries.map { param ->
+                        when (param) {
+                            BrushGateParam.Size -> gateSize
+                            BrushGateParam.Softness -> gateSoftness
+                            BrushGateParam.Opacity -> gateOpacity
+                            BrushGateParam.Flow -> gateFlow
+                        }
+                    }
                 },
                 fingerX = rightSatX + brushGateFingerLocalX,
                 fingerY = rightSatY + brushGateFingerLocalY,
