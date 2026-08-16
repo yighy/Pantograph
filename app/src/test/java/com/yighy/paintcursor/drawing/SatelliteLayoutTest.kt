@@ -30,6 +30,7 @@ class SatelliteLayoutTest {
             floatArrayOf(fabX, fabY, fab, fab),
             floatArrayOf(p.levelsX, p.levelsY, mini, fab),
             floatArrayOf(p.modeX, p.modeY, fab, mini),
+            floatArrayOf(p.colourX, p.colourY, fab, mini),
             floatArrayOf(p.toolX, p.toolY, toolW, toolH)
         )
     }
@@ -40,7 +41,7 @@ class SatelliteLayoutTest {
     private fun assertNothingOverlaps(fabX: Float, fabY: Float, sw: Float = w, sh: Float = h) {
         val p = place(fabX, fabY, sw, sh)
         val all = boxes(p, fabX, fabY)
-        val names = listOf("fab", "levels", "mode", "tool")
+        val names = listOf("fab", "levels", "mode", "colour", "tool")
         for (i in all.indices) {
             for (j in i + 1 until all.size) {
                 assertFalse(
@@ -78,6 +79,40 @@ class SatelliteLayoutTest {
         val fabY = h - fab
         val p = place(100f, fabY)
         assertTrue("mode should sit above the button", p.modeY < fabY)
+    }
+
+    // ---- the colour pill, which shares the column with the mode one ----
+
+    @Test
+    fun `the colour pill sits above the button by default`() {
+        val p = place(100f, 300f)
+        assertEquals(100f, p.colourX, 0.01f)
+        assertEquals(300f - gap - mini, p.colourY, 0.01f)
+    }
+
+    @Test
+    fun `against the bottom edge the colour pill queues above the displaced mode pill`() {
+        // Mode has flipped up into the slot colour wanted, so colour takes the next one out.
+        val fabY = h - fab
+        val p = place(100f, fabY)
+        assertTrue("colour above mode", p.colourY < p.modeY)
+        assertEquals(p.modeY - gap - mini, p.colourY, 0.01f)
+    }
+
+    @Test
+    fun `against the top edge the colour pill follows the mode pill down`() {
+        val p = place(100f, 0f)
+        assertTrue("colour below the button", p.colourY > 0f)
+        assertEquals(p.modeY + mini + gap, p.colourY, 0.01f)
+    }
+
+    @Test
+    fun `a corner leaves the colour pill on screen`() {
+        for (corner in listOf(0f to 0f, w - fab to 0f, 0f to h - fab, w - fab to h - fab)) {
+            val p = place(corner.first, corner.second)
+            assertTrue("colour off the top at $corner", p.colourY >= 0f)
+            assertTrue("colour off the bottom at $corner", p.colourY + mini <= h)
+        }
     }
 
     @Test

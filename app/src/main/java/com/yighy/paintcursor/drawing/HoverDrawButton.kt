@@ -85,6 +85,8 @@ fun HoverDrawButton(
     val gateSoftness by remember(viewModel) { viewModel.uiState.map { it.brushSoftness }.distinctUntilChanged() }.collectAsState(0f)
     val gateOpacity by remember(viewModel) { viewModel.uiState.map { it.brushOpacity }.distinctUntilChanged() }.collectAsState(1f)
     val gateFlow by remember(viewModel) { viewModel.uiState.map { it.brushFlow }.distinctUntilChanged() }.collectAsState(1f)
+    val gateColor by remember(viewModel) { viewModel.uiState.map { it.selectedColor }.distinctUntilChanged() }.collectAsState(Color.Black)
+    val isEyeDropperActive by remember(viewModel) { viewModel.uiState.map { it.isEyeDropperMode }.distinctUntilChanged() }.collectAsState(false)
 
     // Scale() grows the FAB about its centre, so the pen-down pulse eats into the gap on
     // every side. The satellite spacing below is derived from this same constant rather
@@ -277,6 +279,8 @@ fun HoverDrawButton(
         val rightSatY = placement.levelsY
         val bottomSatX = placement.modeX
         val bottomSatY = placement.modeY
+        val colourSatX = placement.colourX
+        val colourSatY = placement.colourY
         val toolSatX = placement.toolX
         val toolSatY = placement.toolY
         // Turned on its side when it falls back to a flank rather than stacking.
@@ -663,6 +667,215 @@ fun HoverDrawButton(
             }
         }
 
+        // ---- Top satellite: colour gate ----
+        // Same gear-stick interaction as the brush levels on the right: a column per component,
+        // its level on the vertical axis. The fourth column is the eyedropper, which is an
+        // action rather than a level - see ColourGateParam.
+        var colourGateActive by remember { mutableStateOf(false) }
+        var colourGateParam by remember { mutableIntStateOf(0) }
+        var colourGateValue by remember { mutableFloatStateOf(0f) }
+        var colourGateFingerLocalX by remember { mutableFloatStateOf(0f) }
+        var colourGateFingerLocalY by remember { mutableFloatStateOf(0f) }
+        // The gate's own hue/saturation/brightness, kept across gestures. A colour cannot
+        // always say what its hue was - grey has none - so this is the authority and the brush
+        // colour only tops it up with what it can still express. See ColourGate.readFrom.
+        var workingHsv by remember { mutableStateOf(Hsv(0f, 1f, 1f)) }
+
+        val colourGateScale by animateFloatAsState(
+            targetValue = if (colourGateActive) 1.08f else 1f,
+            animationSpec = MotionTokens.pulse
+        )
+        val colourGateBg by animateColorAsState(
+            targetValue = when {
+                colourGateActive -> MaterialTheme.colorScheme.primary
+                isEyeDropperActive -> MaterialTheme.colorScheme.tertiaryContainer
+                else -> MaterialTheme.colorScheme.secondaryContainer
+            },
+            animationSpec = MotionTokens.colorTransition
+        )
+        val colourGateIconTint by animateColorAsState(
+            targetValue = when {
+                colourGateActive -> MaterialTheme.colorScheme.onPrimary
+                isEyeDropperActive -> MaterialTheme.colorScheme.onTertiaryContainer
+                else -> MaterialTheme.colorScheme.onSecondaryContainer
+            },
+            animationSpec = MotionTokens.colorTransition
+        )
+
+        // As with the other gates, the drag is unreachable with a screen reader, so each
+        // component gets discrete nudges and the eyedropper a plain toggle.
+        val colourGateActions = ColourGateParam.entries.filter { it != ColourGateParam.Pipette }
+            .flatMap { param ->
+                listOf(true, false).map { increase ->
+                    CustomAccessibilityAction(
+                        label = "${if (increase) "Increase" else "Decrease"} ${param.label.lowercase()}"
+                    ) {
+                        val live = viewModel.uiState.value.selectedColor
+                        val hsv = ColourGate.readFrom(live.red, live.green, live.blue, workingHsv)
+                        val stepSize = (param.max - param.min) / 10f
+                        val next = (param.read(hsv) + if (increase) stepSize else -stepSize)
+                            .coerceIn(param.min, param.max)
+                        val updated = param.applyTo(hsv, next)
+                        workingHsv = updated
+                        val rgb = ColourGate.toRgb(updated)
+                        viewModel.selectColor(Color(rgb[0], rgb[1], rgb[2]))
+                        true
+                    }
+                }
+            } + CustomAccessibilityAction("Toggle eyedropper") { viewModel.toggleEyeDropper(); true }
+
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(colourSatX.roundToInt(), colourSatY.roundToInt()) }
+                .scale(colourGateScale * satelliteScale)
+                .alpha(satelliteAlpha)
+                .size(fabSizeSetting.dp, miniThicknessDp.dp)
+                .semantics {
+                    contentDescription = if (isEyeDropperActive) "Colour, eyedropper armed" else "Colour"
+                    customActions = colourGateActions
+                }
+                .shadow(4.dp, satShape)
+                .clip(satShape)
+                .background(colourGateBg)
+                .pointerInput(satelliteGateSensitivity) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        if (viewModel.uiState.value.isPenDown) return@awaitEachGesture
+                        down.consume()
+                        val params = ColourGateParam.entries
+                        val colStepPx = 56.dp.toPx()
+                        val colHysteresisPx = 10.dp.toPx()
+                        val sensitivity = satelliteGateSensitivity.coerceIn(0.25f, 4f)
+                        val deadZonePx = 12.dp.toPx() / sensitivity
+                        val travelPx = 300.dp.toPx() / sensitivity
+                        val startIndex = colourGateParam
+                        var index = startIndex
+                        var committedRel = 0
+                        var anchorX = down.position.x
+                        var anchorY = down.position.y
+
+                        val live = viewModel.uiState.value.selectedColor
+                        var hsv = ColourGate.readFrom(live.red, live.green, live.blue, workingHsv)
+                        workingHsv = hsv
+                        var anchorValue = params[index].read(hsv)
+                        colourGateValue = anchorValue
+                        colourGateFingerLocalX = down.position.x
+                        colourGateFingerLocalY = down.position.y
+                        colourGateActive = true
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        var inDeadZone = true
+                        // Only a real lift arms the eyedropper. A cancelled gesture also leaves
+                        // the loop, and toggling a mode because the system took the pointer away
+                        // is not something the user asked for.
+                        var released = false
+                        try {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.find { it.id == down.id } ?: break
+                            if (!change.pressed) { released = true; break }
+                            change.consume()
+                            colourGateFingerLocalX = change.position.x
+                            colourGateFingerLocalY = change.position.y
+                            anchorX = GateMath.clampColumnAnchor(
+                                anchorX = anchorX,
+                                fingerX = change.position.x,
+                                colStepPx = colStepPx,
+                                minRel = -startIndex,
+                                maxRel = params.size - 1 - startIndex
+                            )
+                            val newRel = GateMath.nextColumn(
+                                committedRel, change.position.x - anchorX, colStepPx, colHysteresisPx
+                            )
+                            val newIndex = (startIndex + newRel).coerceIn(0, params.size - 1)
+                            if (newIndex != index) {
+                                index = newIndex
+                                committedRel = newRel.coerceIn(-startIndex, params.size - 1 - startIndex)
+                                colourGateParam = newIndex
+                                anchorY = change.position.y
+                                anchorValue = params[index].read(hsv)
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                inDeadZone = true
+                            }
+                            val p = params[index]
+                            // The eyedropper column has no vertical axis to read.
+                            if (p == ColourGateParam.Pipette) continue
+
+                            if (GateMath.effectiveDelta(anchorY - change.position.y, deadZonePx) == 0f) {
+                                inDeadZone = true
+                            } else if (inDeadZone) {
+                                inDeadZone = false
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                            val stepped = GateMath.step(
+                                anchorValue = anchorValue,
+                                anchorPos = anchorY,
+                                currentPos = change.position.y,
+                                min = p.min,
+                                max = p.max,
+                                deadZonePx = deadZonePx,
+                                travelPx = travelPx
+                            )
+                            anchorValue = stepped.anchorValue
+                            anchorY = stepped.anchorPos
+                            colourGateValue = stepped.value
+                            hsv = p.applyTo(hsv, stepped.value)
+                            workingHsv = hsv
+                            val rgb = ColourGate.toRgb(hsv)
+                            viewModel.selectColor(Color(rgb[0], rgb[1], rgb[2]))
+                        }
+                        if (released && params[index] == ColourGateParam.Pipette) {
+                            viewModel.toggleEyeDropper()
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        }
+                        } finally {
+                            colourGateActive = false
+                        }
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            val colourHintAlpha by animateFloatAsState(
+                targetValue = if (colourGateActive) 0f else 0.55f,
+                animationSpec = MotionTokens.colorTransitionFloat,
+                label = "colourGateHint"
+            )
+            // Chevrons on the long axis like the levels pill, but flanking a swatch of the
+            // colour itself rather than a glyph: the one thing this control is always able to
+            // tell you at a glance is what colour is loaded.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    Icons.Rounded.KeyboardArrowLeft,
+                    contentDescription = null,
+                    tint = colourGateIconTint.copy(alpha = colourHintAlpha),
+                    modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .size((miniThicknessDp * 0.52f).dp)
+                        .clip(CircleShape)
+                        .background(gateColor)
+                        .border(1.dp, colourGateIconTint.copy(alpha = 0.5f), CircleShape)
+                )
+                if (isEyeDropperActive) {
+                    Icon(
+                        Icons.Rounded.Colorize,
+                        contentDescription = null,
+                        tint = colourGateIconTint,
+                        modifier = Modifier.size((miniThicknessDp * 0.4f).dp)
+                    )
+                }
+                Icon(
+                    Icons.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = colourGateIconTint.copy(alpha = colourHintAlpha),
+                    modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
+                )
+            }
+        }
+
         // ---- Tool satellite: one pinned tool, one tap ----
         // Up to four pinned tools, picked with the same sideways drag the brush gate uses for
         // its four parameters - same hysteresis, same one-column-per-event rule. Releasing
@@ -847,6 +1060,24 @@ fun HoverDrawButton(
             )
         }
         AnimatedVisibility(
+            visible = colourGateActive,
+            enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
+                fadeIn(tween(120)),
+            exit = scaleOut(MotionTokens.expressiveExit, transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
+        ) {
+            ColourGatePanel(
+                paramIndex = colourGateParam,
+                value = colourGateValue,
+                hsv = workingHsv,
+                swatch = gateColor,
+                eyeDropperArmed = isEyeDropperActive,
+                fingerX = colourSatX + colourGateFingerLocalX,
+                fingerY = colourSatY + colourGateFingerLocalY,
+                screenWidth = screenWidth,
+                screenHeight = screenHeight
+            )
+        }
+        AnimatedVisibility(
             visible = toolGateActive,
             enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
                 fadeIn(tween(120)),
@@ -862,6 +1093,43 @@ fun HoverDrawButton(
                 screenHeight = screenHeight
             )
         }
+    }
+}
+
+/**
+ * The colour satellite's four columns.
+ *
+ * [Pipette] is the odd one out: it has no level, so its vertical axis is inert and it fires on
+ * release instead. It is a column rather than a separate button because the eyedropper belongs
+ * with the colour controls, and a fourth pill orbiting the button would have cost more room
+ * than the whole gate.
+ */
+private enum class ColourGateParam(val label: String, val min: Float, val max: Float) {
+    // Declaration order is the column order in the gate and in its readout panel.
+    Hue("Hue", 0f, 360f),
+    Saturation("Sat", 0f, 1f),
+    Brightness("Bright", 0f, 1f),
+    Pipette("Pick", 0f, 1f);
+
+    fun read(hsv: Hsv): Float = when (this) {
+        Hue -> hsv.hue
+        Saturation -> hsv.saturation
+        Brightness -> hsv.value
+        Pipette -> 0f
+    }
+
+    fun applyTo(hsv: Hsv, value: Float): Hsv = when (this) {
+        Hue -> hsv.withHue(value)
+        Saturation -> hsv.withSaturation(value)
+        Brightness -> hsv.withValue(value)
+        Pipette -> hsv
+    }
+
+    /** Never called for [Pipette] - its bubble is the eyedropper glyph, with nothing to read out. */
+    fun format(value: Float): String = when (this) {
+        Hue -> "${value.toInt()}°"
+        Pipette -> ""
+        else -> "${(value * 100).toInt()}%"
     }
 }
 
@@ -980,6 +1248,172 @@ private fun BrushGatePanel(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The colour gate's readout: a swatch of the colour being mixed, then a bubble per component,
+ * same treatment as [BrushGatePanel].
+ *
+ * The values come from the gate's own [hsv] rather than from the brush colour, so the hue
+ * bubble keeps reading the hue being worked on even while saturation sits at zero and the
+ * colour on screen is a grey that no longer carries one.
+ */
+@Composable
+private fun ColourGatePanel(
+    paramIndex: Int,
+    value: Float,
+    hsv: Hsv,
+    swatch: Color,
+    eyeDropperArmed: Boolean,
+    fingerX: Float,
+    fingerY: Float,
+    screenWidth: Float,
+    screenHeight: Float
+) {
+    val density = LocalDensity.current
+    // The hue strip is only worth its height while hue is the column being worked, so the
+    // panel grows for it and shrinks back. The placement below reads the height it actually
+    // has, so it keeps clearing the finger either way.
+    val hueSelected = ColourGateParam.entries[paramIndex] == ColourGateParam.Hue
+    val panelW = 288.dp
+    val panelH = if (hueSelected) 84.dp else 56.dp
+    val panelWPx = with(density) { panelW.toPx() }
+    val panelHPx = with(density) { panelH.toPx() }
+    val fingerGapPx = with(density) { 72.dp.toPx() }
+    val px = (fingerX - panelWPx / 2f).coerceIn(0f, (screenWidth - panelWPx).coerceAtLeast(0f))
+    val above = fingerY - panelHPx - fingerGapPx
+    val py = (if (above >= 0f) above else fingerY + fingerGapPx)
+        .coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
+
+    val bubbleVisible = remember { mutableStateListOf(false, false, false, false) }
+    LaunchedEffect(Unit) {
+        bubbleVisible.indices.forEach { i ->
+            launch {
+                delay(i * 30L)
+                bubbleVisible[i] = true
+            }
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(px.roundToInt(), py.roundToInt()) }
+            .size(panelW, panelH)
+            .zIndex(3f),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(swatch)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                )
+                ColourGateParam.entries.forEachIndexed { i, p ->
+                    val selected = i == paramIndex
+                    val bubbleColor by animateColorAsState(
+                        targetValue = when {
+                            selected -> MaterialTheme.colorScheme.primary
+                            p == ColourGateParam.Pipette && eyeDropperArmed -> MaterialTheme.colorScheme.tertiaryContainer
+                            else -> MaterialTheme.colorScheme.surfaceContainerHigh
+                        },
+                        animationSpec = MotionTokens.colorTransition
+                    )
+                    val contentColor = when {
+                        selected -> MaterialTheme.colorScheme.onPrimary
+                        p == ColourGateParam.Pipette && eyeDropperArmed -> MaterialTheme.colorScheme.onTertiaryContainer
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                    // The dragged component uses the live in-gesture value; the others read the
+                    // gate's triple, which is current either way.
+                    val v = if (selected) value else p.read(hsv)
+                    AnimatedVisibility(
+                        visible = bubbleVisible[i],
+                        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f)
+                    ) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = bubbleColor,
+                            shadowElevation = 4.dp,
+                            tonalElevation = 2.dp
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center,
+                                modifier = Modifier
+                                    .padding(horizontal = 10.dp, vertical = 7.dp)
+                                    // Matches the two-line bubbles beside it, so the row does
+                                    // not go ragged where the icon replaces the readout.
+                                    .height(30.dp)
+                            ) {
+                                if (p == ColourGateParam.Pipette) {
+                                    // The glyph is the whole label here: "Pick / Lift" spent two
+                                    // lines saying what the eyedropper icon says at a glance.
+                                    Icon(
+                                        Icons.Rounded.Colorize,
+                                        contentDescription = null,
+                                        tint = contentColor,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                } else {
+                                    Text(
+                                        p.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (selected) contentColor.copy(alpha = 0.85f) else contentColor.copy(alpha = 0.75f)
+                                    )
+                                    Text(
+                                        p.format(v),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                                        color = contentColor
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (hueSelected) {
+                // Built from the gate's own conversion rather than hand-picked stops, so the
+                // strip cannot drift from the hues the drag actually produces.
+                val hueStops = remember {
+                    (0..12).map { step ->
+                        val rgb = ColourGate.toRgb(Hsv(step * 30f, 1f, 1f))
+                        Color(rgb[0], rgb[1], rgb[2])
+                    }
+                }
+                Canvas(
+                    modifier = Modifier
+                        .width(248.dp)
+                        .height(16.dp)
+                        .clip(CircleShape)
+                ) {
+                    drawRect(brush = Brush.horizontalGradient(hueStops))
+                    val x = (value / 360f).coerceIn(0f, 1f) * size.width
+                    // Dark under light: one marker alone vanishes into either yellow or blue.
+                    drawLine(
+                        Color.Black.copy(alpha = 0.5f),
+                        Offset(x, 0f), Offset(x, size.height),
+                        strokeWidth = 6.dp.toPx()
+                    )
+                    drawLine(
+                        Color.White,
+                        Offset(x, 0f), Offset(x, size.height),
+                        strokeWidth = 3.dp.toPx()
+                    )
                 }
             }
         }

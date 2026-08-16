@@ -31,8 +31,9 @@ The app allows you to draw by driving a **precision cursor** on the screen. Your
 
 ### Satellite gates
 
-Three small pills sit beside the floating button and are worked without looking away from the canvas. They fade out while you're drawing so they can't be hit mid-stroke, and reposition themselves as you drag the button around — flipping to the opposite side, or onto a free flank, rather than running off the screen.
+Four small pills sit around the floating button and are worked without looking away from the canvas. They fade out while you're drawing so they can't be hit mid-stroke, and reposition themselves as you drag the button around — flipping to the opposite side, or onto a free flank, rather than running off the screen.
 
+- **Top pill — colour.** Hold and drag: sideways picks between hue, saturation and brightness; up and down sets the level. The fourth column is the eyedropper, which has no level and arms on release. The pill itself carries a swatch of the loaded colour.
 - **Right pill — brush levels.** Hold and drag: sideways picks between size, opacity, flow and softness; up and down sets the level. A live readout follows your hand, staying clear of it.
 - **Bottom pill — drawing mode.** Hold and drag towards one of four cells: freehand or straight line, eraser off or on. It applies on release.
 - **Third pill — quick tools.** Hold and drag towards one of four cells, same as the mode pill. Long-press any entry in the tools menu to pin or unpin it — pinning a fifth drops the oldest.
@@ -104,8 +105,10 @@ The parts where a mistake is invisible until it bites are kept free of Android t
 JVM tests can cover them:
 
 - `GateMath` — dead zone, response curve and column hysteresis behind the satellite gates.
-- `SatelliteLayout` — where the three pills land for any button position and screen size,
+- `SatelliteLayout` — where the four pills land for any button position and screen size,
   including the sweep asserting that no two ever overlap.
+- `ColourGate` — hue/saturation/brightness both ways, and that desaturating to grey and back
+  returns the colour it started from rather than losing the hue on the way through.
 - `SelectionCommitPolicy` — which layers need a history entry when a floating selection lands.
 - `PinnableTool` — parsing and toggling the persisted quick-tool pins, including the value
   format written by earlier builds.
