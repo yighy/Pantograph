@@ -64,6 +64,8 @@ data class BrushConfig(
     val velocitySize: Float = 0f,
     val velocityFlow: Float = 0f,
     val velocityScatter: Float = 0f,
+    /** Scales [size] past the ceiling of the size slider. 1x paints at the size as set. */
+    val sizeMultiplier: Float = 1f,
     /** Which folder holds this preset; null means it sits loose at the top level. */
     val folderId: Long? = null
 ) {
@@ -86,6 +88,19 @@ data class BrushConfig(
 /** A named grouping of brush presets. */
 data class BrushFolder(val id: Long, val name: String)
 
+/**
+ * The size the brush actually paints at: what the slider says, scaled by the multiplier.
+ *
+ * Everything that depends on brush size reads this rather than [DrawingState.selectedWidth] -
+ * the stamp raster, the spacing between stamps and the scatter amplitudes alike. A multiplier
+ * that only reached the drawn rect would give a stamp upscaled from a small bitmap, stamps
+ * spaced for a brush a sixteenth of the size, and scatter that stayed put while the mark grew.
+ */
+val DrawingState.effectiveWidth: Float get() = selectedWidth * sizeMultiplier
+
+/** [effectiveWidth] for a saved preset rather than the brush in hand. */
+val BrushConfig.effectiveSize: Float get() = size * sizeMultiplier
+
 /** The brush currently in hand, in the same shape as a saved preset so the two can be compared. */
 fun DrawingState.toBrushConfig(id: String = "", name: String = ""): BrushConfig = BrushConfig(
     id = id,
@@ -107,7 +122,8 @@ fun DrawingState.toBrushConfig(id: String = "", name: String = ""): BrushConfig 
     velocityEnabled = velocityEnabled,
     velocitySize = velocitySizeAmount,
     velocityFlow = velocityFlowAmount,
-    velocityScatter = velocityScatterAmount
+    velocityScatter = velocityScatterAmount,
+    sizeMultiplier = sizeMultiplier
 )
 
 data class DrawingState(
@@ -154,6 +170,8 @@ data class DrawingState(
     val velocitySizeAmount: Float = 0f,
     val velocityFlowAmount: Float = 0f,
     val velocityScatterAmount: Float = 0f,
+    /** Scales [selectedWidth] past the slider's 300px ceiling. 1x paints at the size as set. */
+    val sizeMultiplier: Float = 1f,
     
     val selectedCustomBrushId: String? = null,
     val customBrushes: List<BrushConfig> = emptyList(),

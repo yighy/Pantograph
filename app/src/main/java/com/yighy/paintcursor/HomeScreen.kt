@@ -298,7 +298,9 @@ fun ProjectCard(
                                 showMenu = false
                                 onRename() 
                             },
-                            leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary) }
+                            // Untinted like every other non-destructive menu icon; only the
+                            // Delete below it earns a colour.
+                            leadingIcon = { Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(20.dp)) }
                         )
                         DropdownMenuItem(
                             text = { Text("Delete") },

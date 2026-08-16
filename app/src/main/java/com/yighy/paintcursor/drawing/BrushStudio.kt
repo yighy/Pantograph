@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -37,6 +38,7 @@ import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +66,7 @@ fun AdvancedBrushStudioWrapper(viewModel: DrawingViewModel, onDismiss: () -> Uni
 @Composable
 fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     // OpenDocument, not GetContent: these uris are stored with the project and read again on
     // the next launch, and only OpenDocument returns one whose read access can be made to
     // outlive the task. With GetContent the tip and texture went missing on every restart.
@@ -285,16 +288,20 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                             BoxWithConstraints(modifier = Modifier.fillMaxSize().clipToBounds()) {
                                 val wPx = constraints.maxWidth
                                 val hPx = constraints.maxHeight
+                                // Keyed on the whole brush rather than a list of its parameters:
+                                // BrushConfig is a data class, so one added later joins the key
+                                // on its own. Spelling the fields out is how the size multiplier
+                                // came to move the slider without ever redrawing the preview.
+                                //
+                                // Colour and the decoded assets are keyed alongside it because
+                                // the config carries neither - it holds the tip and texture as
+                                // uris, and the preview needs to redraw when their pixels land.
                                 val previewKey = listOf(
-                                    uiState.selectedWidth, uiState.brushSoftness, uiState.brushOpacity,
-                                    uiState.brushFlow, uiState.brushSpacing, uiState.selectedColor,
-                                    uiState.sizeJitter, uiState.scatterJitter,
-                                    uiState.flowJitter, uiState.rotationFollow,
-                                    uiState.brushRotation, uiState.brushRotationJitter,
+                                    uiState.toBrushConfig(),
+                                    uiState.selectedColor,
                                     uiState.brushTipBitmap,
-                                    uiState.brushTextureMask, uiState.velocityEnabled,
-                                    uiState.velocitySizeAmount, uiState.velocityFlowAmount,
-                                    uiState.velocityScatterAmount, wPx, hPx
+                                    uiState.brushTextureMask,
+                                    wPx, hPx
                                 )
                                 val previewBitmap = remember(previewKey) {
                                     if (wPx > 0 && hPx > 0) viewModel.renderBrushPreview(wPx, hPx) else null
@@ -316,6 +323,25 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
             item {
                 StudioSection(title = "Core Properties", icon = Icons.Rounded.Brush) {
                     DrawingSettingRow("Size", "${uiState.selectedWidth.toInt()}px", uiState.selectedWidth, { viewModel.selectWidth(it) }, 1f..300f)
+                    // Sits directly under Size because it scales it: the readout shows the
+                    // multiplier, and the size row above still shows the size being multiplied.
+                    // The slider runs on track position rather than the multiplier itself -
+                    // see SizeMultiplierScale for the curve and the detent at 1.00x.
+                    DrawingSettingRow(
+                        label = "Size Multiplier",
+                        valueLabel = String.format(java.util.Locale.US, "%.2fx", uiState.sizeMultiplier),
+                        value = SizeMultiplierScale.toPosition(uiState.sizeMultiplier),
+                        onValueChange = { position ->
+                            val next = SizeMultiplierScale.toMultiplier(position)
+                            // Tick on the way into the detent only, so it reads as landing on
+                            // 1.00x rather than buzzing for every frame the thumb sits there.
+                            if (next == SizeMultiplierScale.NEUTRAL && uiState.sizeMultiplier != next) {
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            }
+                            viewModel.setSizeMultiplier(next)
+                        },
+                        range = 0f..1f
+                    )
                     DrawingSettingRow("Opacity", "${(uiState.brushOpacity * 100).toInt()}%", uiState.brushOpacity, { viewModel.setBrushOpacity(it) }, 0f..1f)
                     DrawingSettingRow("Flow", "${(uiState.brushFlow * 100).toInt()}%", uiState.brushFlow, { viewModel.setBrushFlow(it) }, 0f..1f)
                     DrawingSettingRow("Softness", "${(uiState.brushSoftness * 100).toInt()}%", uiState.brushSoftness, { viewModel.setBrushSoftness(it) }, 0f..1f)

@@ -50,6 +50,9 @@ Four is the ceiling on the quick-tool pill because that is what a quadrant holds
 - Follow direction as an amount rather than a switch: the stamp can lean into the path
   instead of only ever locking to it.
 - Velocity dynamics: stroke speed can drive size, flow and scatter, up to ×9 either way.
+- Size multiplier, 0x to 16x, taking a brush past the size slider's 300px ceiling. It scales
+  the stamp, the spacing between stamps and the scatter amplitudes together, so a 4x brush is
+  the same brush drawn larger rather than a different one.
 - Custom brush tips and textures.
 - Saveable presets, organised into folders, each shown in the list as a real stroke drawn by
   the engine itself rather than an illustration of one.
@@ -63,8 +66,8 @@ Four is the ceiling on the quick-tool pill because that is what a quadrant holds
 
 **Canvas & workflow**
 - Brush presets live in a panel under the toolbar: tap to load one, and edit, delete or file
-  it into a folder. The Brush Studio opens on the preset you picked and warns before closing
-  on unsaved changes.
+  it into a folder. The Brush Studio opens on the preset you picked — and on a brand-new one as
+  soon as you name it — and warns before closing on unsaved changes.
 - Layers: reorder by drag & drop, opacity, visibility, duplicate, merge down, rename.
 - Full undo/redo history.
 - Import an image as a new layer (position/scale/rotate before applying).
@@ -109,8 +112,16 @@ JVM tests can cover them:
 - `BrushConfig` — what counts as an unsaved edit, checked by reflection so a brush parameter
   added later cannot quietly escape the comparison.
 - `BrushJitter` — that a jitter varies a value without moving its average.
+- `StampRaster` — that an ordinary brush is still rasterised at its own size and drawn
+  unscaled, and that a brush at the top of the size multiplier is capped rather than asking
+  for a 92MB bitmap.
+- `SizeMultiplierScale` — that the multiplier's detent lands on exactly 1.00x without
+  swallowing the values on either side of it.
 - `BrushPreviewScale` — fitting a 300px brush onto a list thumbnail without it swallowing the
   strip or squeezing the fine brushes into identical hairlines.
+- `FloodFill` — that the bucket stops at a line, spreads around one that doesn't reach the edge,
+  and stays inside an active selection.
+- `MagicSelect` — what the wand grabs versus colour select, and the transparent-pixel rule.
 - `SchemaPolicy` — when the database may still fall back to wiping itself, and when a real
   migration becomes mandatory.
 

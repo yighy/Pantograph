@@ -626,7 +626,12 @@ fun QuickBrushPanel(
             takenNames = customBrushes.map { it.name },
             onDismiss = { showNewPresetDialog = false },
             onConfirm = { name ->
-                viewModel.saveCurrentAsCustomBrush(name)
+                // Straight into the studio on the preset just created: naming a brush is
+                // nearly always the first half of sitting down to work on it. Opening is
+                // deferred until the save has landed - fired now, the studio would come up on
+                // whatever was selected beforehand, and flag the new brush as unsaved edits
+                // against it.
+                viewModel.saveCurrentAsCustomBrush(name) { onOpenStudio() }
                 showNewPresetDialog = false
             }
         )

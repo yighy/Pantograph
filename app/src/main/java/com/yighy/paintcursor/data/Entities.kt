@@ -39,6 +39,10 @@ data class ProjectEntity(
     @ColumnInfo(defaultValue = "-1")
     val lastActiveLayerId: Long = -1,
 
+    // Scales the brush size past the slider's ceiling (v17; default matches the migration)
+    @ColumnInfo(defaultValue = "1")
+    val lastSizeMultiplier: Float = 1f,
+
     // Reference Image settings
     val referenceImageUri: String? = null,
     val referenceImageOffsetX: Float = 0f,
@@ -125,5 +129,9 @@ data class CustomBrushEntity(
     val velocityEnabled: Boolean = false,
     val velocitySize: Float = 0f,
     val velocityFlow: Float = 0f,
-    val velocityScatter: Float = 0f
+    val velocityScatter: Float = 0f,
+
+    // Scales `size` past the slider's ceiling (added in v17; default must match the migration)
+    @ColumnInfo(defaultValue = "1")
+    val sizeMultiplier: Float = 1f
 )

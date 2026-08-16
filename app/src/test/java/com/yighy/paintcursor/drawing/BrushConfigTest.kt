@@ -72,7 +72,8 @@ class BrushConfigTest {
             preset.copy(velocityEnabled = true),
             preset.copy(velocitySize = 0.3f),
             preset.copy(velocityFlow = 0.3f),
-            preset.copy(velocityScatter = 0.3f)
+            preset.copy(velocityScatter = 0.3f),
+            preset.copy(sizeMultiplier = 2f)
         )
         assertTrue(
             "a parameter was added without a case here: ${fields.size} fields, ${nudged.size} cases",

@@ -52,4 +52,37 @@ class BrushJitterTest {
             assertTrue(BrushJitter.sizeFactor(r, 1f) > 0f)
         }
     }
+
+}
+
+/**
+ * The memory guard behind the size multiplier. Getting this wrong doesn't misdraw anything -
+ * it runs the app out of memory at the top of the multiplier's range.
+ */
+class StampRasterTest {
+
+    @Test
+    fun `an ordinary brush is rasterised at its own size and drawn unscaled`() {
+        // The property that keeps every existing brush rendering exactly as before.
+        for (size in listOf(1f, 20f, 300f, 1024f)) {
+            assertEquals(size.toInt(), StampRaster.rasterSize(size))
+            assertEquals("size $size", 1f, StampRaster.drawScale(size), 0.0001f)
+        }
+    }
+
+    @Test
+    fun `an oversized stamp is capped and scaled up to compensate`() {
+        // 300px at 16x: the raster stops at the cap, the draw makes up the rest.
+        val size = 4800f
+        assertEquals(StampRaster.MAX_RASTER, StampRaster.rasterSize(size))
+        assertEquals(size, StampRaster.rasterSize(size) * StampRaster.drawScale(size), 0.5f)
+    }
+
+    @Test
+    fun `the raster never collapses or exceeds the cap`() {
+        for (size in listOf(0f, 0.4f, 1f, 5000f, 100_000f)) {
+            val raster = StampRaster.rasterSize(size)
+            assertTrue("size $size gave $raster", raster in 1..StampRaster.MAX_RASTER)
+        }
+    }
 }

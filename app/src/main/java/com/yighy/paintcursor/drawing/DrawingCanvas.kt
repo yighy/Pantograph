@@ -410,7 +410,7 @@ fun CursorLayer(viewModel: DrawingViewModel) {
     val brushPosition by remember(viewModel) { viewModel.uiState.map { it.brushPosition }.distinctUntilChanged() }.collectAsState(Offset.Zero)
     val canvasScale by remember(viewModel) { viewModel.uiState.map { it.canvasScale }.distinctUntilChanged() }.collectAsState(1f)
     val isPenDown by remember(viewModel) { viewModel.uiState.map { it.isPenDown }.distinctUntilChanged() }.collectAsState(false)
-    val selectedWidth by remember(viewModel) { viewModel.uiState.map { it.selectedWidth }.distinctUntilChanged() }.collectAsState(20f)
+    val brushWidth by remember(viewModel) { viewModel.uiState.map { it.effectiveWidth }.distinctUntilChanged() }.collectAsState(20f)
     val cursorThickness by remember(viewModel) { viewModel.uiState.map { it.cursorThickness }.distinctUntilChanged() }.collectAsState(1.0f)
     val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
     val lazyRadius by remember(viewModel) { viewModel.uiState.map { it.lazyRadius }.distinctUntilChanged() }.collectAsState(50f)
@@ -460,7 +460,7 @@ fun CursorLayer(viewModel: DrawingViewModel) {
         
         drawCircle(
             color = if (isLazyModeActive) brushDrawColor else cursorDrawColor,
-            radius = (selectedWidth / 2f),
+            radius = (brushWidth / 2f),
             center = previewCenter,
             style = Stroke(width = sw),
             blendMode = BlendMode.Difference

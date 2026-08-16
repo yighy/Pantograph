@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -324,46 +325,71 @@ fun LayersAndActionsSection(
                         shape = MaterialTheme.shapes.large,
                         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                     ) {
+                        // Leading icons stay untinted, so they take the menu's own
+                        // onSurfaceVariant. Colour here is reserved for saying "this one is
+                        // destructive" (error) - accenting an ordinary action just makes the
+                        // items next to it look disabled, and the accents this menu had
+                        // marked no such thing: "Import Image" only opens the two entries
+                        // below it, which were the grey ones.
                         DropdownMenuItem(
-                            text = { Text("Save Project") }, 
-                            onClick = { viewModel.manualSave(); showMenu = false }, 
-                            leadingIcon = { Icon(Icons.Rounded.Save, null, tint = MaterialTheme.colorScheme.primary) }
+                            text = { Text("Save Project") },
+                            onClick = { viewModel.manualSave(); showMenu = false },
+                            leadingIcon = { Icon(Icons.Rounded.Save, null) }
                         )
                         DropdownMenuItem(
                             text = { Text("Import Image") },
                             onClick = { showImportOptions = !showImportOptions },
-                            leadingIcon = { Icon(Icons.Rounded.AddPhotoAlternate, null, tint = MaterialTheme.colorScheme.primary) },
-                            trailingIcon = { Icon(if (showImportOptions) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore, null) }
+                            leadingIcon = { Icon(Icons.Rounded.AddPhotoAlternate, null) },
+                            trailingIcon = {
+                                // One chevron that turns over, rather than two that swap: the
+                                // rotation is continuous with the rows unfolding underneath,
+                                // where a swap would pop at whichever frame it happened on.
+                                val chevron by animateFloatAsState(
+                                    targetValue = if (showImportOptions) 180f else 0f,
+                                    animationSpec = MotionTokens.expressiveEnter,
+                                    label = "importChevron"
+                                )
+                                Icon(Icons.Rounded.ExpandMore, null, modifier = Modifier.rotate(chevron))
+                            }
                         )
-                        if (showImportOptions) {
-                            DropdownMenuItem(
-                                text = { Text("Reference Image") },
-                                onClick = { imagePickerLauncher.launch(arrayOf("image/*")); showMenu = false },
-                                leadingIcon = { Icon(Icons.Rounded.Image, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                modifier = Modifier.padding(start = 16.dp)
-                            )
-                            DropdownMenuItem(
-                                text = { Text("As New Layer") },
-                                onClick = { layerImportLauncher.launch("image/*"); showMenu = false },
-                                leadingIcon = { Icon(Icons.Rounded.Layers, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
-                                modifier = Modifier.padding(start = 16.dp)
-                            )
+                        // The two entries fold out of the row above instead of appearing
+                        // whole, so it reads as one row opening rather than the menu
+                        // reshuffling under the finger.
+                        AnimatedVisibility(
+                            visible = showImportOptions,
+                            enter = fadeIn(MotionTokens.expressiveEnter) + expandVertically(MotionTokens.panelTransition),
+                            exit = fadeOut(MotionTokens.expressiveExit) + shrinkVertically(MotionTokens.panelTransition)
+                        ) {
+                            Column {
+                                DropdownMenuItem(
+                                    text = { Text("Reference") },
+                                    onClick = { imagePickerLauncher.launch(arrayOf("image/*")); showMenu = false },
+                                    leadingIcon = { Icon(Icons.Rounded.Image, null) },
+                                    modifier = Modifier.padding(start = 16.dp)
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("As New Layer") },
+                                    onClick = { layerImportLauncher.launch("image/*"); showMenu = false },
+                                    leadingIcon = { Icon(Icons.Rounded.Layers, null) },
+                                    modifier = Modifier.padding(start = 16.dp)
+                                )
+                            }
                         }
                         DropdownMenuItem(
-                            text = { Text("Export as PNG") }, 
-                            onClick = { viewModel.exportProject(context, "png"); showMenu = false }, 
-                            leadingIcon = { Icon(Icons.Rounded.IosShare, null, tint = MaterialTheme.colorScheme.primary) }
+                            text = { Text("Export as PNG") },
+                            onClick = { viewModel.exportProject(context, "png"); showMenu = false },
+                            leadingIcon = { Icon(Icons.Rounded.IosShare, null) }
                         )
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         DropdownMenuItem(
                             text = { Text("Settings") },
                             onClick = { onNavigateToSettings(); showMenu = false },
-                            leadingIcon = { Icon(Icons.Rounded.Settings, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            leadingIcon = { Icon(Icons.Rounded.Settings, null) }
                         )
                         DropdownMenuItem(
                             text = { Text("About") },
                             onClick = { showAboutDialog = true; showMenu = false },
-                            leadingIcon = { Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            leadingIcon = { Icon(Icons.Rounded.Info, null) }
                         )
                     }
                 }

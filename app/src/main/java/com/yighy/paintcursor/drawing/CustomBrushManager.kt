@@ -4,6 +4,32 @@ import androidx.compose.ui.graphics.toArgb
 import com.yighy.paintcursor.data.CustomBrushEntity
 import com.yighy.paintcursor.data.ProjectRepository
 
+/** The stored row as the preset shape the rest of the app works with. */
+fun CustomBrushEntity.toBrushConfig() = BrushConfig(
+    id = id.toString(),
+    name = name,
+    size = size,
+    softness = softness,
+    opacity = opacity,
+    flow = flow,
+    spacing = spacing,
+    smoothing = smoothing,
+    rotation = rotation,
+    rotationJitter = rotationJitter,
+    sizeJitter = sizeJitter,
+    scatterJitter = scatterJitter,
+    flowJitter = flowJitter,
+    rotationFollow = rotationFollow,
+    tipUri = tipUri,
+    textureUri = textureUri,
+    velocityEnabled = velocityEnabled,
+    velocitySize = velocitySize,
+    velocityFlow = velocityFlow,
+    velocityScatter = velocityScatter,
+    sizeMultiplier = sizeMultiplier,
+    folderId = folderId
+)
+
 /**
  * Custom-brush CRUD for [DrawingViewModel]: persisting the current brush settings as a saved
  * preset, updating/renaming/deleting existing presets. Pure repository calls - the ViewModel
@@ -53,7 +79,8 @@ class CustomBrushManager(private val repository: ProjectRepository) {
         velocityEnabled = state.velocityEnabled,
         velocitySize = state.velocitySizeAmount,
         velocityFlow = state.velocityFlowAmount,
-        velocityScatter = state.velocityScatterAmount
+        velocityScatter = state.velocityScatterAmount,
+        sizeMultiplier = state.sizeMultiplier
     )
 
     /**
