@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -42,6 +43,13 @@ class PreferenceManager(private val context: Context) {
         val ROTATION_FOLLOW_KEY = floatPreferencesKey("rotation_follow")
     }
 
+    // Every flow below ends in distinctUntilChanged, and it is load-bearing rather than tidy.
+    // DataStore emits its whole snapshot on any write, so without it a change to one setting
+    // re-emits all the others at their unchanged values. Several of these are mirrored into
+    // the drawing state, which meant saving one preference quietly overwrote brush settings
+    // the user had just loaded from a preset - a brush with no scatter came back with the
+    // scatter of whichever preset had set the global last.
+
     /**
      * Comma-separated names of the tools pinned to the quick-access satellite, or null for an
      * empty slot. Stored raw so this layer stays unaware of the drawing package's enum - the
@@ -49,97 +57,97 @@ class PreferenceManager(private val context: Context) {
      */
     val pinnedTools: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[PINNED_TOOL_KEY]
-    }
+    }.distinctUntilChanged()
 
     val appTheme: Flow<AppTheme> = context.dataStore.data.map { preferences ->
         val themeName = preferences[THEME_KEY] ?: AppTheme.SYSTEM.name
         AppTheme.valueOf(themeName)
-    }
+    }.distinctUntilChanged()
 
     val historyLimit: Flow<Int> = context.dataStore.data.map { preferences ->
         preferences[HISTORY_LIMIT_KEY]?.toIntOrNull() ?: 5
-    }
+    }.distinctUntilChanged()
 
     val fabPosition: Flow<Pair<Float, Float>> = context.dataStore.data.map { preferences ->
         val x = preferences[FAB_X_KEY]?.toFloatOrNull() ?: 40f
         val y = preferences[FAB_Y_KEY]?.toFloatOrNull() ?: 500f
         x to y
-    }
+    }.distinctUntilChanged()
 
     val fabDragThreshold: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[FAB_DRAG_THRESHOLD_KEY]?.toFloatOrNull() ?: 100f
-    }
+    }.distinctUntilChanged()
 
     val brushSoftness: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[BRUSH_SOFTNESS_KEY]?.toFloatOrNull() ?: 0f
-    }
+    }.distinctUntilChanged()
 
     val brushSmoothing: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[BRUSH_SMOOTHING_KEY]?.toFloatOrNull() ?: 0.5f
-    }
+    }.distinctUntilChanged()
 
     val colorHistory: Flow<List<String>> = context.dataStore.data.map { preferences ->
         preferences[COLOR_HISTORY_KEY]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
-    }
+    }.distinctUntilChanged()
 
     val colorPickerIsSliderMode: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[COLOR_PICKER_MODE_KEY] ?: false
-    }
+    }.distinctUntilChanged()
 
     val cursorThickness: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[CURSOR_THICKNESS_KEY] ?: 1.0f
-    }
+    }.distinctUntilChanged()
 
     val fabSize: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[FAB_SIZE_KEY] ?: 56f
-    }
+    }.distinctUntilChanged()
 
     val hideStatusBar: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[HIDE_STATUS_BAR_KEY] ?: true
-    }
+    }.distinctUntilChanged()
 
     val dynamicColor: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[DYNAMIC_COLOR_KEY] ?: true
-    }
+    }.distinctUntilChanged()
 
     val fillTolerance: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[FILL_TOLERANCE_KEY] ?: 10f
-    }
+    }.distinctUntilChanged()
 
     val scatterJitter: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[SCATTER_JITTER_KEY] ?: 0f
-    }
+    }.distinctUntilChanged()
 
-    val flowJitter: Flow<Float> = context.dataStore.data.map { it[FLOW_JITTER_KEY] ?: 0f }
-    val rotationFollow: Flow<Float> = context.dataStore.data.map { it[ROTATION_FOLLOW_KEY] ?: 0f }
+    val flowJitter: Flow<Float> = context.dataStore.data.map { it[FLOW_JITTER_KEY] ?: 0f }.distinctUntilChanged()
+    val rotationFollow: Flow<Float> = context.dataStore.data.map { it[ROTATION_FOLLOW_KEY] ?: 0f }.distinctUntilChanged()
 
     val rotationJitter: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[ROTATION_JITTER_KEY] ?: 0f
-    }
+    }.distinctUntilChanged()
 
     val velocitySize: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[VELOCITY_SIZE_KEY] ?: 0f
-    }
+    }.distinctUntilChanged()
 
     val velocityFlow: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[VELOCITY_FLOW_KEY] ?: 0f
-    }
+    }.distinctUntilChanged()
 
     val velocityScatter: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[VELOCITY_SCATTER_KEY] ?: 0f
-    }
+    }.distinctUntilChanged()
 
     val velocityEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[VELOCITY_ENABLED_KEY] ?: false
-    }
+    }.distinctUntilChanged()
 
     val offscreenCursorArrow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[OFFSCREEN_CURSOR_ARROW_KEY] ?: true
-    }
+    }.distinctUntilChanged()
 
     val satelliteGateSensitivity: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[SATELLITE_GATE_SENSITIVITY_KEY] ?: 1f
-    }
+    }.distinctUntilChanged()
 
     suspend fun setAppTheme(theme: AppTheme) {
         context.dataStore.edit { preferences ->

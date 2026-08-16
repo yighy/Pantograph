@@ -43,6 +43,9 @@ class ProjectPersistence(
     @Volatile private var projectMetaDirty = false
     private var projectMetaJob: Job? = null
 
+    @Volatile private var brushSettingsDirty = false
+    private var brushSettingsJob: Job? = null
+
     // ============================ Layer pixels ============================
 
     /** Marks [layerId]'s on-disk PNG as stale and arms a batched flush (at most one per 1.5s). */
@@ -99,11 +102,14 @@ class ProjectPersistence(
     fun flushNow() {
         val throttledSaves = layerSaveJob
         val throttledMeta = projectMetaJob
+        val throttledBrush = brushSettingsJob
         persistScope.launch {
             throttledSaves?.cancelAndJoin()
             throttledMeta?.cancelAndJoin()
+            throttledBrush?.cancelAndJoin()
             flushPendingLayerSaves()
             flushProjectMeta()
+            flushBrushSettings()
         }
     }
 
@@ -159,6 +165,34 @@ class ProjectPersistence(
         if (!projectMetaDirty) return
         projectMetaDirty = false
         repository.updateProjectTimestamp(projectId)
+        saveBrushSettings()
+    }
+
+    /**
+     * Marks the brush settings stale; the write is throttled to at most once a second.
+     *
+     * For the settings that stream - a satellite gate sweep emits one value per pointer event -
+     * where writing straight through meant a project read plus a project write per frame.
+     *
+     * Deliberately not [touchProject], which would do the same job but also bump the project's
+     * updatedAt: adjusting a brush would then reorder the home grid as though the drawing had
+     * been worked on.
+     */
+    fun scheduleBrushSettingsSave() {
+        brushSettingsDirty = true
+        if (brushSettingsJob?.isActive != true) {
+            brushSettingsJob = scope.launch {
+                while (brushSettingsDirty) {
+                    delay(1000)
+                    flushBrushSettings()
+                }
+            }
+        }
+    }
+
+    private suspend fun flushBrushSettings() {
+        if (!brushSettingsDirty) return
+        brushSettingsDirty = false
         saveBrushSettings()
     }
 

@@ -194,37 +194,10 @@ class DrawingViewModel(
             .onEach { tolerance -> session.update { it.copy(fillTolerance = tolerance) } }
             .launchIn(viewModelScope)
 
-        preferenceManager.rotationJitter
-            .onEach { jitter -> session.update { it.copy(brushRotationJitter = jitter) } }
-            .launchIn(viewModelScope)
-
-        preferenceManager.velocitySize
-            .onEach { amount -> session.update { it.copy(velocitySizeAmount = amount) } }
-            .launchIn(viewModelScope)
-
-        preferenceManager.velocityFlow
-            .onEach { amount -> session.update { it.copy(velocityFlowAmount = amount) } }
-            .launchIn(viewModelScope)
-
-        preferenceManager.scatterJitter
-            .onEach { amount -> session.update { it.copy(scatterJitter = amount) } }
-            .launchIn(viewModelScope)
-
-        preferenceManager.flowJitter
-            .onEach { amount -> session.update { it.copy(flowJitter = amount) } }
-            .launchIn(viewModelScope)
-
-        preferenceManager.rotationFollow
-            .onEach { amount -> session.update { it.copy(rotationFollow = amount) } }
-            .launchIn(viewModelScope)
-
-        preferenceManager.velocityScatter
-            .onEach { amount -> session.update { it.copy(velocityScatterAmount = amount) } }
-            .launchIn(viewModelScope)
-
-        preferenceManager.velocityEnabled
-            .onEach { enabled -> session.update { it.copy(velocityEnabled = enabled) } }
-            .launchIn(viewModelScope)
+        // The brush settings that are also global preferences. Walked from one list rather
+        // than spelled out here, because BrushPresetController has to write the same set back
+        // when a preset is loaded - see MirroredBrushSetting for what a mismatch costs.
+        MirroredBrushSetting.observeAll(preferenceManager, session, viewModelScope)
 
         preferenceManager.offscreenCursorArrow
             .onEach { enabled -> session.update { it.copy(showOffscreenCursorArrow = enabled) } }
@@ -708,10 +681,10 @@ class DrawingViewModel(
      */
     private fun updateBrushSetting(persistPreference: (suspend () -> Unit)? = null, update: (DrawingState) -> DrawingState) {
         session.update(update)
-        viewModelScope.launch {
-            persistPreference?.invoke()
-            persistence.saveBrushSettings()
-        }
+        if (persistPreference != null) viewModelScope.launch { persistPreference() }
+        // Throttled: these arrive one per pointer event while a satellite gate is being swept,
+        // and each unthrottled save was a project read plus a project write.
+        persistence.scheduleBrushSettingsSave()
     }
 
     /** Applies a brush setting that is stored as a global default rather than per project. */

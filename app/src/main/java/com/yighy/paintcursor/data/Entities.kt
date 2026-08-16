@@ -33,13 +33,13 @@ data class ProjectEntity(
     val lastBrushTipUri: String? = null,
     val lastBrushTextureUri: String? = null,
 
-    // Per-project workspace state (added in v11; defaults must match the migration)
+    // Per-project workspace state
     @ColumnInfo(defaultValue = "0.6")
     val lastCursorSensitivity: Float = 0.6f,
     @ColumnInfo(defaultValue = "-1")
     val lastActiveLayerId: Long = -1,
 
-    // Scales the brush size past the slider's ceiling (v17; default matches the migration)
+    // Scales the brush size past the slider's ceiling
     @ColumnInfo(defaultValue = "1")
     val lastSizeMultiplier: Float = 1f,
 
@@ -131,7 +131,7 @@ data class CustomBrushEntity(
     val velocityFlow: Float = 0f,
     val velocityScatter: Float = 0f,
 
-    // Scales `size` past the slider's ceiling (added in v17; default must match the migration)
+    // Scales `size` past the slider's ceiling
     @ColumnInfo(defaultValue = "1")
     val sizeMultiplier: Float = 1f
 )

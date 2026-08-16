@@ -92,9 +92,9 @@ class BrushPresetController(
      * Loads [brush] into the brush in hand.
      *
      * The tip and texture are re-decoded from their uris rather than carried in the preset, and
-     * the handful of settings that double as global defaults (rotation jitter, the velocity
-     * dynamics) are written back to the preferences - otherwise the next screen that reads them
-     * would still be showing the previous brush's values.
+     * every setting that doubles as a global default is written back to the preferences -
+     * from [MirroredBrushSetting]'s list, which the observers on the other side walk too, so
+     * the two cannot drift apart.
      */
     fun select(brush: BrushConfig) {
         session.update {
@@ -128,11 +128,7 @@ class BrushPresetController(
         assets.setBrushTexture(context, brush.textureUri)
 
         scope.launch {
-            preferenceManager.setRotationJitter(brush.rotationJitter)
-            preferenceManager.setVelocityEnabled(brush.velocityEnabled)
-            preferenceManager.setVelocitySize(brush.velocitySize)
-            preferenceManager.setVelocityFlow(brush.velocityFlow)
-            preferenceManager.setVelocityScatter(brush.velocityScatter)
+            MirroredBrushSetting.pushAll(preferenceManager, brush)
             persistence.saveBrushSettings()
         }
     }

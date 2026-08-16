@@ -125,6 +125,9 @@ JVM tests can cover them:
 - `FloodFill` — that the bucket stops at a line, spreads around one that doesn't reach the edge,
   and stays inside an active selection.
 - `MagicSelect` — what the wand grabs versus colour select, and the transparent-pixel rule.
+- `MirroredBrushSetting` — that every brush setting stored both on a preset and as a global
+  preference writes the state field it claims and no other, so a preference cannot be restored
+  over a neighbouring setting.
 - `SchemaPolicy` — when the database may still fall back to wiping itself, and when a real
   migration becomes mandatory.
 
