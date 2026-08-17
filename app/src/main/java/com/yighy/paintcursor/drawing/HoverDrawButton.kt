@@ -16,6 +16,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -45,6 +46,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -506,6 +508,15 @@ fun HoverDrawButton(
         }
 
         // ---- Bottom satellite: drawing-mode gate ----
+        // Name of the preset the swap cell would bring back, or null when there is none.
+        // Resolved through the list rather than trusting the remembered id, so a preset deleted
+        // since greys the cell out instead of leaving it offering a swap that would do nothing.
+        val swapTargetName by remember(viewModel) {
+            viewModel.uiState.map { state ->
+                state.previousBrushId?.let { id -> state.customBrushes.find { it.id == id }?.name }
+            }.distinctUntilChanged()
+        }.collectAsState(null)
+
         val isLineMode = drawingMode is DrawingMode.StraightLine || drawingMode is DrawingMode.StraightLineEraser
         val isEraserMode = drawingMode is DrawingMode.Eraser || drawingMode is DrawingMode.StraightLineEraser
         var modeGateActive by remember { mutableStateOf(false) }
@@ -535,8 +546,9 @@ fun HoverDrawButton(
         )
 
         // Same story as the brush gate: the 2x2 drag has no screen-reader equivalent, so each
-        // cell gets a named action. These set the mode outright rather than toggling, so the
-        // announced label always matches what actually happens.
+        // cell gets a named action. The two mode cells are toggles under the finger but are
+        // offered here as outright settings, so the announced label always matches what
+        // actually happens rather than depending on the state at the moment of the tap.
         val modeGateActions = listOf(
             CustomAccessibilityAction("Freehand") {
                 viewModel.setDrawingMode(if (isEraserMode) DrawingMode.Eraser else DrawingMode.Freehand); true
@@ -549,7 +561,9 @@ fun HoverDrawButton(
             },
             CustomAccessibilityAction("Eraser on") {
                 viewModel.setDrawingMode(if (isLineMode) DrawingMode.StraightLineEraser else DrawingMode.Eraser); true
-            }
+            },
+            CustomAccessibilityAction("Undo") { viewModel.undo(); true },
+            CustomAccessibilityAction("Swap to previous brush") { viewModel.swapToPreviousBrush(); true }
         )
 
         Box(
@@ -622,14 +636,30 @@ fun HoverDrawButton(
                             val cur = viewModel.uiState.value.drawingMode
                             val line = cur is DrawingMode.StraightLine || cur is DrawingMode.StraightLineEraser
                             val eraser = cur is DrawingMode.Eraser || cur is DrawingMode.StraightLineEraser
-                            viewModel.setDrawingMode(
-                                when (cell) {
-                                    0 -> if (eraser) DrawingMode.Eraser else DrawingMode.Freehand
-                                    1 -> if (eraser) DrawingMode.StraightLineEraser else DrawingMode.StraightLine
-                                    2 -> if (line) DrawingMode.StraightLine else DrawingMode.Freehand
-                                    else -> if (line) DrawingMode.StraightLineEraser else DrawingMode.Eraser
-                                }
-                            )
+                            // Each cell is one toggle or action rather than one value of a pair,
+                            // which is what buys the two bottom cells: shape and eraser are
+                            // independent of each other, so four half-cells were spending the
+                            // quadrant on two booleans.
+                            when (cell) {
+                                // Shape, carrying the eraser state across unchanged.
+                                0 -> viewModel.setDrawingMode(
+                                    if (line) {
+                                        if (eraser) DrawingMode.Eraser else DrawingMode.Freehand
+                                    } else {
+                                        if (eraser) DrawingMode.StraightLineEraser else DrawingMode.StraightLine
+                                    }
+                                )
+                                // Eraser, carrying the shape across unchanged.
+                                1 -> viewModel.setDrawingMode(
+                                    if (eraser) {
+                                        if (line) DrawingMode.StraightLine else DrawingMode.Freehand
+                                    } else {
+                                        if (line) DrawingMode.StraightLineEraser else DrawingMode.Eraser
+                                    }
+                                )
+                                2 -> viewModel.undo()
+                                else -> viewModel.swapToPreviousBrush()
+                            }
                         }
                     }
                 },
@@ -1053,6 +1083,7 @@ fun HoverDrawButton(
                 hoveredCell = modeGateCell,
                 isLineMode = isLineMode,
                 isEraserMode = isEraserMode,
+                swapTarget = swapTargetName,
                 fingerX = bottomSatX + modeGateFingerLocalX,
                 fingerY = bottomSatY + modeGateFingerLocalY,
                 screenWidth = screenWidth,
@@ -1430,6 +1461,7 @@ private fun ModeGatePanel(
     hoveredCell: Int,
     isLineMode: Boolean,
     isEraserMode: Boolean,
+    swapTarget: String?,
     fingerX: Float,
     fingerY: Float,
     screenWidth: Float,
@@ -1468,24 +1500,52 @@ private fun ModeGatePanel(
             .zIndex(3f),
         contentAlignment = Alignment.Center
     ) {
+        // Each bubble names what releasing on it will *do*, not what is currently set - these
+        // are toggles and actions now, and a cell reading "Line" while line mode is already on
+        // would be describing the state rather than the outcome.
         Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModeGateBubble("Free", Icons.Rounded.Gesture, hoveredCell == 0, active = !isLineMode, visible = bubbleVisible[0])
-                ModeGateBubble("Line", Icons.Rounded.HorizontalRule, hoveredCell == 1, active = isLineMode, visible = bubbleVisible[1])
+                if (isLineMode) {
+                    ModeGateBubble("Free", Icons.Rounded.Gesture, hoveredCell == 0, active = false, visible = bubbleVisible[0])
+                } else {
+                    ModeGateBubble("Line", Icons.Rounded.HorizontalRule, hoveredCell == 0, active = false, visible = bubbleVisible[0])
+                }
+                if (isEraserMode) {
+                    ModeGateBubble("Erase off", Icons.Rounded.Close, hoveredCell == 1, active = false, visible = bubbleVisible[1])
+                } else {
+                    ModeGateBubble("Erase on", EraserIcon, hoveredCell == 1, active = false, visible = bubbleVisible[1])
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModeGateBubble("Eraser off", Icons.Rounded.Close, hoveredCell == 2, active = !isEraserMode, visible = bubbleVisible[2])
-                ModeGateBubble("Eraser on", EraserIcon, hoveredCell == 3, active = isEraserMode, visible = bubbleVisible[3])
+                ModeGateBubble("Undo", Icons.AutoMirrored.Rounded.Undo, hoveredCell == 2, active = false, visible = bubbleVisible[2])
+                // Named with the brush it would bring back, which is the thing worth knowing
+                // before committing to it. Falls back to "Swap" and greys out when there is
+                // nowhere to go, so the cell never disappears from the grid.
+                ModeGateBubble(
+                    swapTarget ?: "Swap",
+                    Icons.Rounded.SwapHoriz,
+                    hoveredCell == 3,
+                    active = false,
+                    visible = bubbleVisible[3],
+                    enabled = swapTarget != null
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ModeGateBubble(label: String, icon: ImageVector, hovered: Boolean, active: Boolean, visible: Boolean) {
+private fun ModeGateBubble(
+    label: String,
+    icon: ImageVector,
+    hovered: Boolean,
+    active: Boolean,
+    visible: Boolean,
+    enabled: Boolean = true
+) {
     val bgColor by animateColorAsState(
         targetValue = when {
-            hovered -> MaterialTheme.colorScheme.primary
+            hovered && enabled -> MaterialTheme.colorScheme.primary
             active -> MaterialTheme.colorScheme.secondaryContainer
             else -> MaterialTheme.colorScheme.surfaceContainerHigh
         },
@@ -1493,6 +1553,9 @@ private fun ModeGateBubble(label: String, icon: ImageVector, hovered: Boolean, a
     )
     val contentColor by animateColorAsState(
         targetValue = when {
+            // Still dims under the finger when disabled, so the cell reads as reached but
+            // inert rather than as a miss.
+            !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
             hovered -> MaterialTheme.colorScheme.onPrimary
             active -> MaterialTheme.colorScheme.onSecondaryContainer
             else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -1519,7 +1582,11 @@ private fun ModeGateBubble(label: String, icon: ImageVector, hovered: Boolean, a
                     label,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (hovered) FontWeight.Bold else FontWeight.Medium,
-                    color = contentColor
+                    color = contentColor,
+                    // A preset name goes in the swap bubble, and a long one would push the
+                    // grid wider than the panel it is measured into.
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

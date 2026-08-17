@@ -99,6 +99,10 @@ class BrushPresetController(
     fun select(brush: BrushConfig) {
         session.update {
             it.copy(
+                // Only when the brush actually changes: re-selecting the one already in hand
+                // would otherwise point the swap at itself and lose the way back.
+                previousBrushId =
+                    if (it.selectedCustomBrushId != brush.id) it.selectedCustomBrushId else it.previousBrushId,
                 selectedCustomBrushId = brush.id,
                 selectedWidth = brush.size,
                 brushSoftness = brush.softness,
@@ -131,6 +135,20 @@ class BrushPresetController(
             MirroredBrushSetting.pushAll(preferenceManager, brush)
             persistence.saveBrushSettings()
         }
+    }
+
+    /**
+     * Flips between the brush in hand and the one used before it.
+     *
+     * Repeating it ping-pongs rather than walking back through a history: [select] records the
+     * brush being left, so the one this swaps away from becomes the way back. Does nothing
+     * before a second preset has been loaded, or if the remembered one has since been deleted.
+     */
+    fun swapToPrevious() {
+        val state = session.value
+        val previous = state.previousBrushId ?: return
+        val brush = state.customBrushes.find { it.id == previous } ?: return
+        select(brush)
     }
 
     // ============================ Folders ============================

@@ -174,6 +174,13 @@ data class DrawingState(
     val sizeMultiplier: Float = 1f,
     
     val selectedCustomBrushId: String? = null,
+    /**
+     * The preset in hand before the current one, for the mode gate's swap cell.
+     *
+     * Session-scoped on purpose: it is a "go back" for the brush you were just using, and
+     * restoring it from a previous run would offer a swap the user has no memory of.
+     */
+    val previousBrushId: String? = null,
     val customBrushes: List<BrushConfig> = emptyList(),
     val brushFolders: List<BrushFolder> = emptyList(),
     /** Bumped when preset tips/textures finish decoding, so thumbnails know to re-render. */

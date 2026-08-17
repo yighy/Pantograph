@@ -35,7 +35,7 @@ Four small pills sit around the floating button and are worked without looking a
 
 - **Top pill — colour.** Hold and drag: sideways picks between hue, saturation and brightness; up and down sets the level. The fourth column is the eyedropper, which has no level and arms on release. The pill itself carries a swatch of the loaded colour.
 - **Right pill — brush levels.** Hold and drag: sideways picks between size, opacity, flow and softness; up and down sets the level. A live readout follows your hand, staying clear of it.
-- **Bottom pill — drawing mode.** Hold and drag towards one of four cells: freehand or straight line, eraser off or on. It applies on release.
+- **Bottom pill — mode and shortcuts.** Hold and drag towards one of four cells, applied on release: top-left toggles freehand and straight line, top-right toggles the eraser, bottom-left undoes, bottom-right flips back to the brush you were using before this one. The two mode cells are independent, so switching shape keeps the eraser as it was and the other way round.
 - **Third pill — quick tools.** Hold and drag towards one of four cells, same as the mode pill. Long-press any entry in the tools menu to pin or unpin it — pinning a fifth drops the oldest.
 
 The gates start from a dead zone, so nothing is selected until the finger commits to a direction and letting go without moving does nothing. They tick haptically on each step, so you can feel where you are with your finger covering the readout. The brush gate responds finely near the anchor and faster at full stretch; its travel is tunable in Settings.

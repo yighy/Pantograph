@@ -768,6 +768,7 @@ class DrawingViewModel(
     fun renameCustomBrush(brush: BrushConfig, newName: String) = presets.rename(brush, newName)
     fun deleteCustomBrush(brush: BrushConfig) = presets.delete(brush)
     fun selectCustomBrush(brush: BrushConfig) = presets.select(brush)
+    fun swapToPreviousBrush() = presets.swapToPrevious()
 
     fun createBrushFolder(name: String) = presets.createFolder(name)
     fun renameBrushFolder(folder: BrushFolder, newName: String) = presets.renameFolder(folder, newName)
