@@ -1,9 +1,9 @@
 <p align=center><image src="app/src/main/ic_launcher-playstore.png" height="200" /></p>
-<h1 align="center">Paint Cursor</h1>
+<h1 align="center">Pantograph</h1>
 <p align="center">A cursor-based drawing app for Android</p>
 <p align="center">
-  <a href="https://github.com/yighy/paintcursor/releases">
-    <img src="https://img.shields.io/github/v/release/yighy/paintcursor?style=for-the-badge&logo=GitHub&include_prereleases" alt="GitHub release" />
+  <a href="https://github.com/yighy/pantograph/releases">
+    <img src="https://img.shields.io/github/v/release/yighy/pantograph?style=for-the-badge&logo=GitHub&include_prereleases" alt="GitHub release" />
   </a>
 </p>
 
@@ -19,7 +19,7 @@
 
 ## 💡 Overview
 
-Paint Cursor is a drawing app with a cursor control.
+Pantograph is a drawing app with a cursor control, named after the 1821 drafting instrument that reproduced a drawing elsewhere as you traced it.
 The app allows you to draw by driving a **precision cursor** on the screen. Your finger stays off the artwork and the reticle does the drawing, so no more fingers hiding your line endings.
 
 ## 🎯 How it works
@@ -86,8 +86,8 @@ Four is the ceiling on the quick-tool pill because that is what a quadrant holds
 Requirements: Android Studio (or just a JDK 17+), Android SDK 37, min SDK 31.
 
 ```bash
-git clone https://github.com/yighy/paintcursor.git
-cd paintcursor
+git clone https://github.com/yighy/pantograph.git
+cd pantograph
 ./gradlew assembleDebug
 ```
 

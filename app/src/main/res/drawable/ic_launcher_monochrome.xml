@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!--
+      The themed-icon layer, authored separately rather than reusing the foreground.
+
+      A themed icon keeps only the alpha and tints it, so the cream pivots of the colour
+      version would flatten into the bars and the joints would vanish. Here they are cut out
+      of the alpha instead, which is the one way a hole survives being tinted.
+
+      The cut is a clip-path holding the whole square minus six circles, with evenOdd making
+      the circles subtract rather than add. VectorDrawable has no blend modes, so a clip is
+      the only subtraction available.
+    -->
+
+    <group>
+        <clip-path
+            android:fillType="evenOdd"
+            android:pathData="M0,0h108v108h-108z
+                M28,67m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0
+                M41,54m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0
+                M54,41m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0
+                M67,54m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0
+                M80,67m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0
+                M54,67m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0" />
+
+        <path
+            android:pathData="M28,67 L54,41 L80,67"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+        <path
+            android:pathData="M41,54 L54,67 L67,54"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="7"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

@@ -19,15 +19,15 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "com.yighy.paintcursor"
+    namespace = "com.yighy.pantograph"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.yighy.paintcursor"
+        applicationId = "com.yighy.pantograph"
         minSdk = 31
         targetSdk = 37
         versionCode = 1
-        versionName = "0.8.0"
+        versionName = "0.9.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

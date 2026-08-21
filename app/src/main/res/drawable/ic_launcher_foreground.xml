@@ -6,46 +6,68 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Bold S-shaped brush stroke (orange gradient, bright at the top) with the
-         cursor badge - a white disc with an orange plus - sitting at the stroke's
-         top end. Vector recreation of the provided icon artwork, fitted inside the
-         adaptive safe zone (r~33 around 54,54). -->
+    <!--
+      The pantograph linkage the app is named after: a hinged rhombus between two arms,
+      where holding one point makes another point draw.
 
-    <!-- The S stroke -->
+      Two polylines rather than six bars, because the linkage is geometrically two straight
+      arms crossing a rhombus - the outer chevron runs straight through the mid pivots, so
+      splitting it into segments would only invite them to drift out of line.
+
+      Fitted to the adaptive safe zone: the outermost pivots sit 29.1 from centre (54,54) and
+      the bars add 3.5 either side, landing at 32.6 against the 33 a circular mask guarantees.
+      Bars are deliberately heavier than scale from the reference drawing would give - at
+      launcher size the true proportion came out around a pixel wide.
+    -->
+
+    <!-- Outer arms: left end through the mid pivot to the apex, and down the other side -->
     <path
-        android:pathData="M67,38 C60,30 46,29 41,36 C36,43 42,50 50,53 C58,56 64,62 59,70 C54,77 42,76 38,69"
-        android:strokeWidth="12"
-        android:strokeLineCap="round">
+        android:pathData="M28,67 L54,41 L80,67"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round">
         <aapt:attr name="android:strokeColor">
             <gradient
                 android:type="linear"
                 android:startX="54"
-                android:startY="29"
+                android:startY="34"
                 android:endX="54"
-                android:endY="77">
-                <item android:offset="0" android:color="#F08133" />
-                <item android:offset="1" android:color="#C75E23" />
+                android:endY="74">
+                <item android:offset="0" android:color="#EE8F3C" />
+                <item android:offset="1" android:color="#BE5A26" />
             </gradient>
         </aapt:attr>
     </path>
 
-    <!-- Reticle cursor at the stroke's end: open circle + crosshair extending
-         beyond it + center dot, like the in-app cursor -->
+    <!-- The two short bars that close the rhombus onto the bottom pivot -->
     <path
-        android:strokeColor="#F7F2E9"
-        android:strokeWidth="2"
-        android:pathData="M67,38m-8,0a8,8 0 1,1 16,0a8,8 0 1,1 -16,0" />
-    <path
-        android:strokeColor="#F7F2E9"
-        android:strokeWidth="2.2"
+        android:pathData="M41,54 L54,67 L67,54"
+        android:strokeWidth="7"
         android:strokeLineCap="round"
-        android:pathData="M54,38 L80,38" />
-    <path
-        android:strokeColor="#F7F2E9"
-        android:strokeWidth="2.2"
-        android:strokeLineCap="round"
-        android:pathData="M67,25 L67,51" />
-    <path
-        android:fillColor="#F7F2E9"
-        android:pathData="M67,38m-1.2,0a1.2,1.2 0 1,1 2.4,0a1.2,1.2 0 1,1 -2.4,0" />
+        android:strokeLineJoin="round">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:type="linear"
+                android:startX="54"
+                android:startY="47"
+                android:endX="54"
+                android:endY="74">
+                <item android:offset="0" android:color="#E3833A" />
+                <item android:offset="1" android:color="#BE5A26" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!--
+      The six joints. Cream discs rather than the holes of the reference drawing: a hole of
+      the same proportion closes up at icon size, and the light dot keeps the palette the
+      rest of the app already uses. The monochrome layer does punch them through, because
+      there the system keeps only the alpha and a second colour is not available.
+    -->
+    <path android:fillColor="#F7F2E9" android:pathData="M28,67m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0" />
+    <path android:fillColor="#F7F2E9" android:pathData="M41,54m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0" />
+    <path android:fillColor="#F7F2E9" android:pathData="M54,41m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0" />
+    <path android:fillColor="#F7F2E9" android:pathData="M67,54m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0" />
+    <path android:fillColor="#F7F2E9" android:pathData="M80,67m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0" />
+    <path android:fillColor="#F7F2E9" android:pathData="M54,67m-2.8,0a2.8,2.8 0 1,1 5.6,0a2.8,2.8 0 1,1 -5.6,0" />
 </vector>

@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "My Application3"
+rootProject.name = "Pantograph"
 include(":app")
