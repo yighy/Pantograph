@@ -563,7 +563,7 @@ private fun ToolsMenuButton(
     }
 }
 
-private const val GITHUB_URL = "https://github.com/yighy/pantograph"
+private const val GITHUB_URL = "https://github.com/yighy/Pantograph"
 
 @Composable
 fun AboutDialog(onDismiss: () -> Unit) {
