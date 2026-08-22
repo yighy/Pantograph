@@ -17,14 +17,14 @@
 -->
 ---
 
-## 💡 Overview
+## Overview
 
 You draw by driving a **precision cursor** rather than by touching the artwork. Your finger
 stays off the canvas and the reticle lays the stroke, so nothing hides the end of your line.
 
 Named after the 1821 drafting instrument that reproduced a drawing elsewhere as you traced it.
 
-## 🎯 How it works
+## How it works
 
 - **Drag anywhere** on the canvas to move the cursor — the stroke happens at the reticle, not under your finger.
 - **Tap** on the screen or **hold** the floating button, to lower or raise the pen.
@@ -45,7 +45,7 @@ around the screen.
 Each starts from a dead zone, so letting go without moving does nothing, and ticks haptically
 as you cross a threshold.
 
-## ✨ Features
+## Features
 
 **Brush engine**
 - Size, opacity, flow, softness, smoothing, spacing and rotation.
@@ -69,7 +69,7 @@ as you cross a threshold.
 - Eyedropper, colour history, HSB picker.
 - Export as PNG.
 
-## 🛠️ Building
+## Building
 
 Requirements: Android Studio (or a JDK 17+), Android SDK 37, min SDK 31.
 
@@ -94,7 +94,7 @@ colour conversion, flood fill, the brush scales — are deliberately free of And
 plain JVM tests can cover them. Each test class says at the top which failure it exists to
 catch.
 
-## 👩‍💻 Tech Stack
+## Tech Stack
 
 - **Kotlin**: 100% Kotlin codebase, coroutines & flows throughout
 - **Jetpack Compose**: the entire UI, no XML layouts
@@ -103,6 +103,6 @@ catch.
 - **DataStore**: user preferences and app settings
 - **Coil**: image loading for thumbnails and reference images
 
-## 📄 License
+## License
 
 This project is licensed under the [GNU General Public License v3.0](LICENSE).
