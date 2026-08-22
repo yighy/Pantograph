@@ -95,9 +95,23 @@ fun DrawingCanvas(
         val density = LocalDensity.current
         
         if (canvasWidth > 0 && canvasHeight > 0) {
+            // Which canvas the current framing was computed for. Remembered rather than a
+            // boolean so a project loading in over the placeholder size reads as a different
+            // canvas - see CanvasFitPolicy for what that fixed.
+            var fittedFor by remember { mutableStateOf(0 to 0) }
+
             LaunchedEffect(canvasWidth, canvasHeight, screenWidth, screenHeight, fitToScreenTrigger) {
                 viewModel.setCanvasSize(IntSize(canvasWidth, canvasHeight))
-                if ((canvasScale == 1.0f && canvasOffset == Offset.Zero) || fitToScreenTrigger > 0) {
+                val shouldFit = CanvasFitPolicy.shouldFit(
+                    fitRequested = fitToScreenTrigger > 0,
+                    canvasWidth = canvasWidth,
+                    canvasHeight = canvasHeight,
+                    lastFittedWidth = fittedFor.first,
+                    lastFittedHeight = fittedFor.second,
+                    untouched = canvasScale == 1.0f && canvasOffset == Offset.Zero
+                )
+                if (shouldFit) {
+                    fittedFor = canvasWidth to canvasHeight
                     // Animate only when the user asked for it; the initial fit stays instant
                     viewModel.fitToScreen(screenWidth, screenHeight, animate = fitToScreenTrigger > 0)
                 }
