@@ -12,15 +12,21 @@
     -->
 
     <group>
+        <!--
+          The joints are subtracted by winding direction, not by fillType: a <clip-path> reads
+          only name and pathData, so an evenOdd declared here is dropped and the default
+          nonZero rule applies. The circles therefore run counter to the square around them -
+          winding 1 minus 1 is zero, which is the hole. Drawn the same way round as the square
+          they came to 2 and stayed solid, which is exactly what shipped before this.
+     -->
         <clip-path
-            android:fillType="evenOdd"
             android:pathData="M0,0h108v108h-108z
-                M29,66.5m-2.6,0a2.6,2.6 0 1,1 5.2,0a2.6,2.6 0 1,1 -5.2,0
-                M41.5,54m-2.6,0a2.6,2.6 0 1,1 5.2,0a2.6,2.6 0 1,1 -5.2,0
-                M54,41.5m-2.6,0a2.6,2.6 0 1,1 5.2,0a2.6,2.6 0 1,1 -5.2,0
-                M66.5,54m-2.6,0a2.6,2.6 0 1,1 5.2,0a2.6,2.6 0 1,1 -5.2,0
-                M79,66.5m-2.6,0a2.6,2.6 0 1,1 5.2,0a2.6,2.6 0 1,1 -5.2,0
-                M54,66.5m-2.6,0a2.6,2.6 0 1,1 5.2,0a2.6,2.6 0 1,1 -5.2,0" />
+                M29,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
+                M41.5,54m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
+                M54,41.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
+                M66.5,54m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
+                M79,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
+                M54,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0" />
 
         <path
             android:pathData="M29,66.5 L54,41.5 L79,66.5"
