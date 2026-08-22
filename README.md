@@ -23,7 +23,7 @@ Named after the 1821 drafting instrument that reproduced a drawing elsewhere as 
 ## How it works
 
 - **Drag anywhere** on the canvas to move the cursor — the stroke happens at the reticle, not under your finger.
-- **Tap** on the screen or **hold** the floating button, to lower or raise the pen.
+- **Tap** on the screen or **hold/Unhold** the floating button, to lower/raise the pen.
 - **Two fingers** to pan, pinch-zoom and rotate the canvas around the cursor.
 - Adjustable cursor sensitivity.
 
