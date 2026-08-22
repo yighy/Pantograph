@@ -9,6 +9,7 @@
 
 <p align=center>
 <image src="assets/1.gif" height="512"/>
+</p>
 
 
 ---
