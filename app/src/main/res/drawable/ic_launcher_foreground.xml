@@ -1,42 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:aapt="http://schemas.android.com/aapt"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
 
     <!--
-      The pantograph linkage the app is named after: a hinged rhombus between two arms, where
-      holding one point makes another point draw.
+      Four bars pinned at the joints. Each lies over the ones before it, and the overlap is a
+      real gap in the alpha rather than a dark line painted on: the themed layer keeps only the
+      alpha, so a painted seam would separate the bars at full colour and flatten back to one
+      blob when tinted. Cutting means both layers show the same mechanism.
 
-      Two polylines rather than six bars, because the linkage is geometrically two straight
-      arms crossing a rhombus - the outer chevron runs straight through the mid pivots, so
-      splitting it into segments would only invite them to drift out of line.
+      A clip-path cannot add, only keep, so each bar sits in its own group clipped by the
+      capsules of the bars above it. Those capsules are the bar outline grown by 0.65 either
+      side - the 1.3 seam. The width is the whole design: at 3.5 the cuts stop separating the
+      bars and start severing them, taking the middle rhombus with them.
 
-      The joints are cut out of the alpha rather than painted over in the background colour.
-      A launcher may parallax the foreground against the background, and painted-on dots would
-      slide off the ground they are imitating; a hole always shows whatever is actually behind.
-      VectorDrawable has no blend modes, so an evenOdd clip is the only subtraction available.
-
-      Bar weight and hole size are a pair: at 8.5 wide with holes of 2.6 there is 1.65 of bar
-      left either side of each joint. Thinner bars, or wider holes, and the joints sever the
-      arms at small sizes; narrower holes and they read as pinpricks at large ones.
-
-      Fitted to the adaptive safe zone: the outermost pivots sit 27.95 from centre (54,54) and
-      the bars add 4.25, landing at 32.2 against the 33 a circular mask guarantees.
+      Every subtraction runs counter to the square around it, because a clip-path reads only
+      name and pathData - fillType is dropped and the default nonZero rule decides. Wound the
+      same way round they would add up to 2 and nothing would be cut.
     -->
 
     <group>
-        <!--
-          The joints are subtracted by winding direction, not by fillType: a <clip-path> reads
-          only name and pathData, so an evenOdd declared here is dropped and the default
-          nonZero rule applies. The circles therefore run counter to the square around them -
-          winding 1 minus 1 is zero, which is the hole. Drawn the same way round as the square
-          they came to 2 and stayed solid, which is exactly what shipped before this.
-     -->
-        <clip-path
-            android:pathData="M0,0h108v108h-108z
+        <clip-path android:pathData="M0,0h108v108h-108z
                 M29,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
                 M41.5,54m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
                 M54,41.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
@@ -44,35 +29,64 @@
                 M79,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
                 M54,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0" />
 
-        <!-- Outer arms: left end through the mid pivot to the apex, and down the other side -->
-        <path
-            android:pathData="M29,66.5 L54,41.5 L79,66.5"
-            android:strokeWidth="8.5"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round">
+        <group>
+            <!-- bar1 passes under bar2, bar3, bar4 -->
+            <clip-path android:pathData="M0,0h108v108h-108z
+                M50.54,44.96L75.54,69.96A4.9,4.9 0 0,0 82.46,63.04L57.46,38.04A4.9,4.9 0 0,0 50.54,44.96Z
+                M38.04,57.46L50.54,69.96A4.9,4.9 0 0,0 57.46,63.04L44.96,50.54A4.9,4.9 0 0,0 38.04,57.46Z
+                M57.46,69.96L69.96,57.46A4.9,4.9 0 0,0 63.04,50.54L50.54,63.04A4.9,4.9 0 0,0 57.46,69.96Z" />
+            <path android:pathData="M29,66.5 L54,41.5"
+                android:strokeWidth="8.5" android:strokeLineCap="round">
             <aapt:attr name="android:strokeColor">
-                <gradient
-                    android:type="linear"
+                <gradient android:type="linear"
                     android:startX="54" android:startY="37"
                     android:endX="54" android:endY="71">
                     <item android:offset="0" android:color="#EE8F3C" />
                     <item android:offset="1" android:color="#BE5A26" />
                 </gradient>
             </aapt:attr>
-        </path>
-
-        <!-- The two short bars that close the rhombus onto the bottom pivot -->
-        <path
-            android:pathData="M41.5,54 L54,66.5 L66.5,54"
-            android:strokeWidth="8.5"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round">
+            </path>
+        </group>
+        <group>
+            <!-- bar2 passes under bar3, bar4 -->
+            <clip-path android:pathData="M0,0h108v108h-108z
+                M38.04,57.46L50.54,69.96A4.9,4.9 0 0,0 57.46,63.04L44.96,50.54A4.9,4.9 0 0,0 38.04,57.46Z
+                M57.46,69.96L69.96,57.46A4.9,4.9 0 0,0 63.04,50.54L50.54,63.04A4.9,4.9 0 0,0 57.46,69.96Z" />
+            <path android:pathData="M54,41.5 L79,66.5"
+                android:strokeWidth="8.5" android:strokeLineCap="round">
             <aapt:attr name="android:strokeColor">
-                <gradient
-                    android:type="linear"
-                    android:startX="54" android:startY="49"
+                <gradient android:type="linear"
+                    android:startX="54" android:startY="37"
                     android:endX="54" android:endY="71">
-                    <item android:offset="0" android:color="#E3833A" />
+                    <item android:offset="0" android:color="#EE8F3C" />
+                    <item android:offset="1" android:color="#BE5A26" />
+                </gradient>
+            </aapt:attr>
+            </path>
+        </group>
+        <group>
+            <!-- bar3 passes under bar4 -->
+            <clip-path android:pathData="M0,0h108v108h-108z
+                M57.46,69.96L69.96,57.46A4.9,4.9 0 0,0 63.04,50.54L50.54,63.04A4.9,4.9 0 0,0 57.46,69.96Z" />
+            <path android:pathData="M41.5,54 L54,66.5"
+                android:strokeWidth="8.5" android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient android:type="linear"
+                    android:startX="54" android:startY="37"
+                    android:endX="54" android:endY="71">
+                    <item android:offset="0" android:color="#EE8F3C" />
+                    <item android:offset="1" android:color="#BE5A26" />
+                </gradient>
+            </aapt:attr>
+            </path>
+        </group>
+        <path android:pathData="M54,66.5 L66.5,54"
+            android:strokeWidth="8.5" android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient android:type="linear"
+                    android:startX="54" android:startY="37"
+                    android:endX="54" android:endY="71">
+                    <item android:offset="0" android:color="#EE8F3C" />
                     <item android:offset="1" android:color="#BE5A26" />
                 </gradient>
             </aapt:attr>

@@ -1,26 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
 
-    <!--
-      The themed-icon layer. Same geometry and the same evenOdd cut as the colour foreground,
-      but authored separately: a themed icon keeps only the alpha and tints it, so anything
-      relying on a second colour would flatten into the bars.
-    -->
+    <!-- The themed layer: same geometry and the same cuts as the colour foreground, flattened
+         to one tint. Authored alongside it so the two cannot drift apart. -->
 
     <group>
-        <!--
-          The joints are subtracted by winding direction, not by fillType: a <clip-path> reads
-          only name and pathData, so an evenOdd declared here is dropped and the default
-          nonZero rule applies. The circles therefore run counter to the square around them -
-          winding 1 minus 1 is zero, which is the hole. Drawn the same way round as the square
-          they came to 2 and stayed solid, which is exactly what shipped before this.
-     -->
-        <clip-path
-            android:pathData="M0,0h108v108h-108z
+        <clip-path android:pathData="M0,0h108v108h-108z
                 M29,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
                 M41.5,54m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
                 M54,41.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
@@ -28,13 +15,31 @@
                 M79,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0
                 M54,66.5m-2.6,0a2.6,2.6 0 1,0 5.2,0a2.6,2.6 0 1,0 -5.2,0" />
 
-        <path
-            android:pathData="M29,66.5 L54,41.5 L79,66.5"
-            android:strokeColor="#FFFFFF" android:strokeWidth="8.5"
-            android:strokeLineCap="round" android:strokeLineJoin="round" />
-        <path
-            android:pathData="M41.5,54 L54,66.5 L66.5,54"
-            android:strokeColor="#FFFFFF" android:strokeWidth="8.5"
-            android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <group>
+            <!-- bar1 passes under bar2, bar3, bar4 -->
+            <clip-path android:pathData="M0,0h108v108h-108z
+                M50.54,44.96L75.54,69.96A4.9,4.9 0 0,0 82.46,63.04L57.46,38.04A4.9,4.9 0 0,0 50.54,44.96Z
+                M38.04,57.46L50.54,69.96A4.9,4.9 0 0,0 57.46,63.04L44.96,50.54A4.9,4.9 0 0,0 38.04,57.46Z
+                M57.46,69.96L69.96,57.46A4.9,4.9 0 0,0 63.04,50.54L50.54,63.04A4.9,4.9 0 0,0 57.46,69.96Z" />
+            <path android:pathData="M29,66.5 L54,41.5"
+                android:strokeWidth="8.5" android:strokeLineCap="round" android:strokeColor="#FFFFFF" />
+        </group>
+        <group>
+            <!-- bar2 passes under bar3, bar4 -->
+            <clip-path android:pathData="M0,0h108v108h-108z
+                M38.04,57.46L50.54,69.96A4.9,4.9 0 0,0 57.46,63.04L44.96,50.54A4.9,4.9 0 0,0 38.04,57.46Z
+                M57.46,69.96L69.96,57.46A4.9,4.9 0 0,0 63.04,50.54L50.54,63.04A4.9,4.9 0 0,0 57.46,69.96Z" />
+            <path android:pathData="M54,41.5 L79,66.5"
+                android:strokeWidth="8.5" android:strokeLineCap="round" android:strokeColor="#FFFFFF" />
+        </group>
+        <group>
+            <!-- bar3 passes under bar4 -->
+            <clip-path android:pathData="M0,0h108v108h-108z
+                M57.46,69.96L69.96,57.46A4.9,4.9 0 0,0 63.04,50.54L50.54,63.04A4.9,4.9 0 0,0 57.46,69.96Z" />
+            <path android:pathData="M41.5,54 L54,66.5"
+                android:strokeWidth="8.5" android:strokeLineCap="round" android:strokeColor="#FFFFFF" />
+        </group>
+        <path android:pathData="M54,66.5 L66.5,54"
+            android:strokeWidth="8.5" android:strokeLineCap="round" android:strokeColor="#FFFFFF" />
     </group>
 </vector>
