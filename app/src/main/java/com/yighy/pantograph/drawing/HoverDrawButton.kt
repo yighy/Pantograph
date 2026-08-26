@@ -16,6 +16,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
@@ -666,6 +668,12 @@ fun HoverDrawButton(
             contentAlignment = Alignment.Center
         ) {
             // Same affordance as the brush gate, turned along this pill's own axis.
+            //
+            // The chevrons are auto-mirrored ones, but only because the plain variants are
+            // deprecated - they mean "this pill sweeps sideways", not "back" and "forward",
+            // and the drag does not reverse under RTL. Mirroring a symmetric pair swaps two
+            // glyphs that are each other's reflection, so the row draws identically either
+            // way. Keep them as a pair; flipping one on its own would break that.
             val modeHintAlpha by animateFloatAsState(
                 targetValue = if (modeGateActive) 0f else 0.55f,
                 animationSpec = MotionTokens.colorTransitionFloat,
@@ -676,7 +684,7 @@ fun HoverDrawButton(
                 horizontalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    Icons.Rounded.KeyboardArrowLeft,
+                    Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
                     contentDescription = null,
                     tint = modeGateIconTint.copy(alpha = modeHintAlpha),
                     modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
@@ -689,7 +697,7 @@ fun HoverDrawButton(
                     modifier = Modifier.size((miniThicknessDp * 0.62f).dp)
                 )
                 Icon(
-                    Icons.Rounded.KeyboardArrowRight,
+                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = null,
                     tint = modeGateIconTint.copy(alpha = modeHintAlpha),
                     modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
@@ -877,7 +885,7 @@ fun HoverDrawButton(
                 horizontalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    Icons.Rounded.KeyboardArrowLeft,
+                    Icons.AutoMirrored.Rounded.KeyboardArrowLeft,
                     contentDescription = null,
                     tint = colourGateIconTint.copy(alpha = colourHintAlpha),
                     modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
@@ -898,7 +906,7 @@ fun HoverDrawButton(
                     )
                 }
                 Icon(
-                    Icons.Rounded.KeyboardArrowRight,
+                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = null,
                     tint = colourGateIconTint.copy(alpha = colourHintAlpha),
                     modifier = Modifier.size((miniThicknessDp * 0.36f).dp)
@@ -1506,18 +1514,18 @@ private fun ModeGatePanel(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (isLineMode) {
-                    ModeGateBubble("Free", Icons.Rounded.Gesture, hoveredCell == 0, active = false, visible = bubbleVisible[0])
+                    ModeGateBubble("Free", Icons.Rounded.Gesture, hoveredCell == 0, visible = bubbleVisible[0])
                 } else {
-                    ModeGateBubble("Line", Icons.Rounded.HorizontalRule, hoveredCell == 0, active = false, visible = bubbleVisible[0])
+                    ModeGateBubble("Line", Icons.Rounded.HorizontalRule, hoveredCell == 0, visible = bubbleVisible[0])
                 }
                 if (isEraserMode) {
-                    ModeGateBubble("Erase off", Icons.Rounded.Close, hoveredCell == 1, active = false, visible = bubbleVisible[1])
+                    ModeGateBubble("Erase off", Icons.Rounded.Close, hoveredCell == 1, visible = bubbleVisible[1])
                 } else {
-                    ModeGateBubble("Erase on", EraserIcon, hoveredCell == 1, active = false, visible = bubbleVisible[1])
+                    ModeGateBubble("Erase on", EraserIcon, hoveredCell == 1, visible = bubbleVisible[1])
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ModeGateBubble("Undo", Icons.AutoMirrored.Rounded.Undo, hoveredCell == 2, active = false, visible = bubbleVisible[2])
+                ModeGateBubble("Undo", Icons.AutoMirrored.Rounded.Undo, hoveredCell == 2, visible = bubbleVisible[2])
                 // Named with the brush it would bring back, which is the thing worth knowing
                 // before committing to it. Falls back to "Swap" and greys out when there is
                 // nowhere to go, so the cell never disappears from the grid.
@@ -1525,7 +1533,6 @@ private fun ModeGatePanel(
                     swapTarget ?: "Swap",
                     Icons.Rounded.SwapHoriz,
                     hoveredCell == 3,
-                    active = false,
                     visible = bubbleVisible[3],
                     enabled = swapTarget != null
                 )
@@ -1534,19 +1541,22 @@ private fun ModeGatePanel(
     }
 }
 
+/**
+ * Note there is no on/off state here, unlike the tool gate's bubbles. These cells name the
+ * outcome rather than the setting - "Erase on" flips to "Erase off" instead of lighting up -
+ * so the state is already carried by the label, and a highlight would only say it twice.
+ */
 @Composable
 private fun ModeGateBubble(
     label: String,
     icon: ImageVector,
     hovered: Boolean,
-    active: Boolean,
     visible: Boolean,
     enabled: Boolean = true
 ) {
     val bgColor by animateColorAsState(
         targetValue = when {
             hovered && enabled -> MaterialTheme.colorScheme.primary
-            active -> MaterialTheme.colorScheme.secondaryContainer
             else -> MaterialTheme.colorScheme.surfaceContainerHigh
         },
         animationSpec = MotionTokens.colorTransition
@@ -1557,7 +1567,6 @@ private fun ModeGateBubble(
             // inert rather than as a miss.
             !enabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
             hovered -> MaterialTheme.colorScheme.onPrimary
-            active -> MaterialTheme.colorScheme.onSecondaryContainer
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         },
         animationSpec = MotionTokens.colorTransition
@@ -1658,7 +1667,10 @@ private fun ToolGateBubble(tool: PinnableTool?, isOn: Boolean, hovered: Boolean,
         targetValue = when {
             tool == null -> MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.4f)
             hovered -> MaterialTheme.colorScheme.primary
-            isOn -> MaterialTheme.colorScheme.secondaryContainer
+            // primaryContainer, not secondaryContainer: in the dark scheme the secondary one
+            // sits a couple of steps off surfaceContainerHigh, so a tool that was already on
+            // read as just another idle cell - which is the whole thing this bubble has to say.
+            isOn -> MaterialTheme.colorScheme.primaryContainer
             else -> MaterialTheme.colorScheme.surfaceContainerHigh
         },
         animationSpec = MotionTokens.colorTransition
@@ -1667,8 +1679,21 @@ private fun ToolGateBubble(tool: PinnableTool?, isOn: Boolean, hovered: Boolean,
         targetValue = when {
             tool == null -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
             hovered -> MaterialTheme.colorScheme.onPrimary
-            isOn -> MaterialTheme.colorScheme.onSecondaryContainer
+            isOn -> MaterialTheme.colorScheme.onPrimaryContainer
             else -> MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = MotionTokens.colorTransition
+    )
+    // A fill on its own is still at the mercy of dynamic colour, where the container tones
+    // are whatever the wallpaper hands us and can land close to the surface again. The ring
+    // is drawn in the full-strength accent, which is the one colour guaranteed to stand off
+    // the surface in both schemes. Under the finger it flips to onPrimary so the "already
+    // on" mark survives on top of the primary fill instead of disappearing into it.
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            tool == null || !isOn -> Color.Transparent
+            hovered -> MaterialTheme.colorScheme.onPrimary
+            else -> MaterialTheme.colorScheme.primary
         },
         animationSpec = MotionTokens.colorTransition
     )
@@ -1679,7 +1704,14 @@ private fun ToolGateBubble(tool: PinnableTool?, isOn: Boolean, hovered: Boolean,
         Surface(
             shape = RoundedCornerShape(50),
             color = bgColor,
-            shadowElevation = if (tool == null) 0.dp else 4.dp,
+            border = if (tool == null) null else BorderStroke(2.dp, borderColor),
+            // An on tool also sits higher than the rest of the grid, so the state carries at
+            // a glance even before the colours are read.
+            shadowElevation = when {
+                tool == null -> 0.dp
+                isOn -> 8.dp
+                else -> 4.dp
+            },
             tonalElevation = if (tool == null) 0.dp else 2.dp
         ) {
             Row(
@@ -1696,7 +1728,7 @@ private fun ToolGateBubble(tool: PinnableTool?, isOn: Boolean, hovered: Boolean,
                 Text(
                     tool?.label ?: "Empty",
                     style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (hovered) FontWeight.Bold else FontWeight.Medium,
+                    fontWeight = if (hovered || isOn) FontWeight.Bold else FontWeight.Medium,
                     color = contentColor
                 )
             }
