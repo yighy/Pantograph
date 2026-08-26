@@ -3,6 +3,7 @@ package com.yighy.pantograph.ui.theme
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 
@@ -28,6 +29,9 @@ object MotionTokens {
 
     /** Docked panel expand/collapse (e.g. the drawing toolbar's animateContentSize). */
     val panelTransition: FiniteAnimationSpec<IntSize> = spring(dampingRatio = 0.85f, stiffness = 380f)
+
+    /** A panel resizing itself around content that comes and goes (the colour gate's hue strip). */
+    val panelHeight: FiniteAnimationSpec<Dp> = spring(dampingRatio = 0.9f, stiffness = 500f)
 
     /** Floating panels sliding in from off-screen (layer rail, layer-edit panel). */
     val slideEnter: FiniteAnimationSpec<IntOffset> = spring(dampingRatio = 0.86f, stiffness = 500f)

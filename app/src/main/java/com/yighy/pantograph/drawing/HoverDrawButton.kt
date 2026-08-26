@@ -3,6 +3,7 @@ package com.yighy.pantograph.drawing
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.*
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -1056,7 +1058,9 @@ fun HoverDrawButton(
             visible = brushGateActive,
             enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
                 fadeIn(tween(120)),
-            exit = scaleOut(MotionTokens.expressiveExit, transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
+            // Holds fully opaque while the bubbles cascade out underneath, then clears
+            // whatever is left. Scaling here too would fight their own scale-out.
+            exit = fadeOut(tween(80, delayMillis = 200))
         ) {
             BrushGatePanel(
                 paramIndex = brushGateParam,
@@ -1078,14 +1082,19 @@ fun HoverDrawButton(
                 fingerX = rightSatX + brushGateFingerLocalX,
                 fingerY = rightSatY + brushGateFingerLocalY,
                 screenWidth = screenWidth,
-                screenHeight = screenHeight
+                screenHeight = screenHeight,
+                // Read off the enclosing transition rather than the gate's own flag: this has
+                // to turn false when the panel starts leaving, not when the gesture ends.
+                visible = transition.targetState == EnterExitState.Visible
             )
         }
         AnimatedVisibility(
             visible = modeGateActive,
             enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
                 fadeIn(tween(120)),
-            exit = scaleOut(MotionTokens.expressiveExit, transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
+            // Holds fully opaque while the bubbles cascade out underneath, then clears
+            // whatever is left. Scaling here too would fight their own scale-out.
+            exit = fadeOut(tween(80, delayMillis = 200))
         ) {
             ModeGatePanel(
                 hoveredCell = modeGateCell,
@@ -1095,14 +1104,19 @@ fun HoverDrawButton(
                 fingerX = bottomSatX + modeGateFingerLocalX,
                 fingerY = bottomSatY + modeGateFingerLocalY,
                 screenWidth = screenWidth,
-                screenHeight = screenHeight
+                screenHeight = screenHeight,
+                // Read off the enclosing transition rather than the gate's own flag: this has
+                // to turn false when the panel starts leaving, not when the gesture ends.
+                visible = transition.targetState == EnterExitState.Visible
             )
         }
         AnimatedVisibility(
             visible = colourGateActive,
             enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
                 fadeIn(tween(120)),
-            exit = scaleOut(MotionTokens.expressiveExit, transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
+            // Holds fully opaque while the bubbles cascade out underneath, then clears
+            // whatever is left. Scaling here too would fight their own scale-out.
+            exit = fadeOut(tween(80, delayMillis = 200))
         ) {
             ColourGatePanel(
                 paramIndex = colourGateParam,
@@ -1113,14 +1127,19 @@ fun HoverDrawButton(
                 fingerX = colourSatX + colourGateFingerLocalX,
                 fingerY = colourSatY + colourGateFingerLocalY,
                 screenWidth = screenWidth,
-                screenHeight = screenHeight
+                screenHeight = screenHeight,
+                // Read off the enclosing transition rather than the gate's own flag: this has
+                // to turn false when the panel starts leaving, not when the gesture ends.
+                visible = transition.targetState == EnterExitState.Visible
             )
         }
         AnimatedVisibility(
             visible = toolGateActive,
             enter = scaleIn(MotionTokens.expressiveEnter, transformOrigin = TransformOrigin(0.5f, 0.5f)) +
                 fadeIn(tween(120)),
-            exit = scaleOut(MotionTokens.expressiveExit, transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut(tween(100))
+            // Holds fully opaque while the bubbles cascade out underneath, then clears
+            // whatever is left. Scaling here too would fight their own scale-out.
+            exit = fadeOut(tween(80, delayMillis = 200))
         ) {
             ToolGatePanel(
                 tools = pinnedTools,
@@ -1129,7 +1148,10 @@ fun HoverDrawButton(
                 fingerX = toolSatX + toolGateFingerLocalX,
                 fingerY = toolSatY + toolGateFingerLocalY,
                 screenWidth = screenWidth,
-                screenHeight = screenHeight
+                screenHeight = screenHeight,
+                // Read off the enclosing transition rather than the gate's own flag: this has
+                // to turn false when the panel starts leaving, not when the gesture ends.
+                visible = transition.targetState == EnterExitState.Visible
             )
         }
     }
@@ -1169,6 +1191,29 @@ private enum class ColourGateParam(val label: String, val min: Float, val max: F
         Hue -> "${value.toInt()}°"
         Pipette -> ""
         else -> "${(value * 100).toInt()}%"
+    }
+}
+
+/**
+ * Runs a gate panel's bubbles in and out one beat apart.
+ *
+ * Outward the order reverses, so the row closes from its far end back towards the finger
+ * instead of the whole thing blinking off at once - the enter already cascaded, and only
+ * having one half of the pair was what made a gate feel like it was snatched away.
+ *
+ * The panel above must stay mounted for the whole outward cascade, which is why the enclosing
+ * AnimatedVisibility exits on a delayed fade rather than a scale.
+ */
+@Composable
+private fun StaggeredBubbles(flags: SnapshotStateList<Boolean>, visible: Boolean) {
+    LaunchedEffect(visible) {
+        val order = if (visible) flags.indices.toList() else flags.indices.reversed().toList()
+        order.forEachIndexed { beat, i ->
+            launch {
+                delay(beat * 30L)
+                flags[i] = visible
+            }
+        }
     }
 }
 
@@ -1213,7 +1258,9 @@ private fun BrushGatePanel(
     fingerX: Float,
     fingerY: Float,
     screenWidth: Float,
-    screenHeight: Float
+    screenHeight: Float,
+    /** False the moment the panel starts leaving, which is what drives the outward cascade. */
+    visible: Boolean
 ) {
     val density = LocalDensity.current
     val panelW = 260.dp
@@ -1230,18 +1277,8 @@ private fun BrushGatePanel(
     val py = (if (above >= 0f) above else fingerY + fingerGapPx)
         .coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
 
-    // Staggered pop-in: each bubble starts hidden and flips visible a beat after the
-    // previous one, giving the row a small cascading entrance instead of popping in as
-    // one flat block. Fires once per time the panel mounts (i.e. once per show).
     val bubbleVisible = remember { mutableStateListOf(false, false, false, false) }
-    LaunchedEffect(Unit) {
-        bubbleVisible.indices.forEach { i ->
-            launch {
-                delay(i * 30L)
-                bubbleVisible[i] = true
-            }
-        }
-    }
+    StaggeredBubbles(bubbleVisible, visible)
 
     Box(
         modifier = Modifier
@@ -1262,7 +1299,8 @@ private fun BrushGatePanel(
                 )
                 AnimatedVisibility(
                     visible = bubbleVisible[i],
-                    enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f)
+                    enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f),
+                    exit = fadeOut(tween(120)) + scaleOut(MotionTokens.expressiveExit, targetScale = 0.55f)
                 ) {
                     Surface(
                         shape = MaterialTheme.shapes.small,
@@ -1311,7 +1349,9 @@ private fun ColourGatePanel(
     fingerX: Float,
     fingerY: Float,
     screenWidth: Float,
-    screenHeight: Float
+    screenHeight: Float,
+    /** False the moment the panel starts leaving, which is what drives the outward cascade. */
+    visible: Boolean
 ) {
     val density = LocalDensity.current
     // The hue strip is only worth its height while hue is the column being worked, so the
@@ -1319,7 +1359,13 @@ private fun ColourGatePanel(
     // has, so it keeps clearing the finger either way.
     val hueSelected = ColourGateParam.entries[paramIndex] == ColourGateParam.Hue
     val panelW = 288.dp
-    val panelH = if (hueSelected) 84.dp else 56.dp
+    // Animated, not switched: the height feeds the placement maths below, so snapping it
+    // teleported the whole panel the instant hue was reached or left.
+    val panelH by animateDpAsState(
+        targetValue = if (hueSelected) 84.dp else 56.dp,
+        animationSpec = MotionTokens.panelHeight,
+        label = "colourPanelHeight"
+    )
     val panelWPx = with(density) { panelW.toPx() }
     val panelHPx = with(density) { panelH.toPx() }
     val fingerGapPx = with(density) { 72.dp.toPx() }
@@ -1329,14 +1375,7 @@ private fun ColourGatePanel(
         .coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
 
     val bubbleVisible = remember { mutableStateListOf(false, false, false, false) }
-    LaunchedEffect(Unit) {
-        bubbleVisible.indices.forEach { i ->
-            launch {
-                delay(i * 30L)
-                bubbleVisible[i] = true
-            }
-        }
-    }
+    StaggeredBubbles(bubbleVisible, visible)
 
     Box(
         modifier = Modifier
@@ -1380,7 +1419,8 @@ private fun ColourGatePanel(
                     val v = if (selected) value else p.read(hsv)
                     AnimatedVisibility(
                         visible = bubbleVisible[i],
-                        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f)
+                        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f),
+                        exit = fadeOut(tween(120)) + scaleOut(MotionTokens.expressiveExit, targetScale = 0.55f)
                     ) {
                         Surface(
                             shape = MaterialTheme.shapes.small,
@@ -1425,7 +1465,16 @@ private fun ColourGatePanel(
                 }
             }
 
-            if (hueSelected) {
+            // Grows and folds away with the hue column rather than appearing whole: it is the
+            // one part of this panel that comes and goes mid-gesture, and a bare `if` made it
+            // blink in and out while the finger was still moving.
+            AnimatedVisibility(
+                visible = hueSelected && visible,
+                enter = expandVertically(MotionTokens.panelTransition, expandFrom = Alignment.Top) +
+                    fadeIn(tween(140)),
+                exit = shrinkVertically(MotionTokens.panelTransition, shrinkTowards = Alignment.Top) +
+                    fadeOut(tween(90))
+            ) {
                 // Built from the gate's own conversion rather than hand-picked stops, so the
                 // strip cannot drift from the hues the drag actually produces.
                 val hueStops = remember {
@@ -1473,7 +1522,9 @@ private fun ModeGatePanel(
     fingerX: Float,
     fingerY: Float,
     screenWidth: Float,
-    screenHeight: Float
+    screenHeight: Float,
+    /** False the moment the panel starts leaving, which is what drives the outward cascade. */
+    visible: Boolean
 ) {
     val density = LocalDensity.current
     val panelW = 248.dp
@@ -1490,16 +1541,8 @@ private fun ModeGatePanel(
     val py = (if (above >= 0f) above else fingerY + fingerGapPx)
         .coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
 
-    // Staggered pop-in, same treatment as BrushGatePanel's bubbles
     val bubbleVisible = remember { mutableStateListOf(false, false, false, false) }
-    LaunchedEffect(Unit) {
-        bubbleVisible.indices.forEach { i ->
-            launch {
-                delay(i * 30L)
-                bubbleVisible[i] = true
-            }
-        }
-    }
+    StaggeredBubbles(bubbleVisible, visible)
 
     Box(
         modifier = Modifier
@@ -1573,7 +1616,8 @@ private fun ModeGateBubble(
     )
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f)
+        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f),
+        exit = fadeOut(tween(120)) + scaleOut(MotionTokens.expressiveExit, targetScale = 0.55f)
     ) {
         Surface(
             shape = RoundedCornerShape(50),
@@ -1615,7 +1659,9 @@ private fun ToolGatePanel(
     fingerX: Float,
     fingerY: Float,
     screenWidth: Float,
-    screenHeight: Float
+    screenHeight: Float,
+    /** False the moment the panel starts leaving, which is what drives the outward cascade. */
+    visible: Boolean
 ) {
     if (tools.isEmpty()) return
     val density = LocalDensity.current
@@ -1629,16 +1675,8 @@ private fun ToolGatePanel(
     val py = (if (above >= 0f) above else fingerY + fingerGapPx)
         .coerceIn(0f, (screenHeight - panelHPx).coerceAtLeast(0f))
 
-    // Staggered pop-in, same treatment as the mode gate's bubbles
     val bubbleVisible = remember { mutableStateListOf(false, false, false, false) }
-    LaunchedEffect(Unit) {
-        bubbleVisible.indices.forEach { i ->
-            launch {
-                delay(i * 30L)
-                bubbleVisible[i] = true
-            }
-        }
-    }
+    StaggeredBubbles(bubbleVisible, visible)
 
     Box(
         modifier = Modifier
@@ -1699,7 +1737,8 @@ private fun ToolGateBubble(tool: PinnableTool?, isOn: Boolean, hovered: Boolean,
     )
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f)
+        enter = fadeIn(tween(160)) + scaleIn(MotionTokens.expressiveEnter, initialScale = 0.55f),
+        exit = fadeOut(tween(120)) + scaleOut(MotionTokens.expressiveExit, targetScale = 0.55f)
     ) {
         Surface(
             shape = RoundedCornerShape(50),
