@@ -204,6 +204,8 @@ data class DrawingState(
     val currentPath: DrawingPath? = null,
     
     val cursorPosition: Offset = Offset.Zero,
+    /** Mirrored from preferences; read by [HistoryCoordinator] when an entry carries an anchor. */
+    val undoRestoresCursor: Boolean = true,
     val brushPosition: Offset = Offset.Zero,
     val cursorSensitivity: Float = 0.6f,
     val cursorThickness: Float = 1.0f,

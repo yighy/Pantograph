@@ -5,9 +5,12 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.ui.geometry.lerp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -27,6 +30,14 @@ class HistoryCoordinator(
 ) {
     private var historyJob: Job? = null
 
+    /**
+     * The cursor glide runs outside [launchHistoryOp] on purpose. Pixels have to come back the
+     * instant undo is pressed, and chaining a 220ms animation into that queue would make a held
+     * undo crawl. Kept separately and restarted on each move, a burst of undos reads as the
+     * cursor walking back through the work rather than as a series of jumps.
+     */
+    private var cursorJob: Job? = null
+
     private fun launchHistoryOp(block: suspend () -> Unit) {
         val previous = historyJob
         historyJob = scope.launch(Dispatchers.Main) {
@@ -40,10 +51,12 @@ class HistoryCoordinator(
      * will overwrite or remove (see [SnapshotSpec]); metadata-only operations pass an empty
      * map. Must be called before the operation mutates the layer bitmaps.
      */
-    fun save(specs: Map<Long, SnapshotSpec>) {
+    fun save(specs: Map<Long, SnapshotSpec>, cursorAnchor: CursorAnchor? = null) {
         val state = session.value
         if (state.projectId == -1L) return
-        manager.saveState(session.layerBitmaps, state.layers, state.activeLayerId, state.historyLimit, specs)
+        manager.saveState(
+            session.layerBitmaps, state.layers, state.activeLayerId, state.historyLimit, specs, cursorAnchor
+        )
         session.update { it.copy(canUndo = true, canRedo = false) }
     }
 
@@ -55,7 +68,9 @@ class HistoryCoordinator(
     fun abortLastEntry() {
         launchHistoryOp {
             val lastState = manager.popUndo() ?: return@launchHistoryOp
-            applyHistoryState(lastState)
+            // Taking an operation back is not the user undoing anything, so the cursor stays
+            // where their finger left it.
+            applyHistoryState(lastState, moveCursor = false)
             session.update { it.copy(canUndo = manager.hasUndo) }
         }
     }
@@ -65,7 +80,10 @@ class HistoryCoordinator(
             val prevState = manager.popUndo() ?: return@launchHistoryOp
             val state = session.value
             manager.pushToRedo(
-                manager.captureInverse(session.layerBitmaps, state.layers, state.activeLayerId, prevState)
+                manager.captureInverse(
+                    session.layerBitmaps, state.layers, state.activeLayerId, prevState,
+                    cursorAnchor = inverseAnchor(prevState, state)
+                )
             )
             applyHistoryState(prevState)
         }
@@ -76,15 +94,70 @@ class HistoryCoordinator(
             val nextState = manager.popRedo() ?: return@launchHistoryOp
             val state = session.value
             manager.pushToUndo(
-                manager.captureInverse(session.layerBitmaps, state.layers, state.activeLayerId, nextState)
+                manager.captureInverse(
+                    session.layerBitmaps, state.layers, state.activeLayerId, nextState,
+                    cursorAnchor = inverseAnchor(nextState, state)
+                )
             )
             applyHistoryState(nextState)
         }
     }
 
+    /**
+     * Where going back the other way should land: wherever the pointer is now, but only if the
+     * entry being applied moves it in the first place. Without that condition, undoing a stroke
+     * and then a layer rename would leave the rename's redo carrying an anchor of its own, and
+     * redoing it would shift the cursor for an operation that has no place on the canvas.
+     */
+    private fun inverseAnchor(target: HistoryState, state: DrawingState): CursorAnchor? =
+        if (target.cursorAnchor == null) null
+        else CursorAnchor(state.cursorPosition, state.brushPosition)
+
+    /**
+     * Abandons an in-flight glide. Called the moment the user drives the cursor themselves: the
+     * animation would otherwise keep writing positions underneath them and drag the cursor back
+     * off the line they are drawing.
+     */
+    fun cancelCursorGlide() {
+        cursorJob?.cancel()
+        cursorJob = null
+    }
+
+    private fun glideCursorTo(anchor: CursorAnchor) {
+        cursorJob?.cancel()
+        cursorJob = scope.launch(Dispatchers.Main) {
+            val fromCursor = session.value.cursorPosition
+            val fromBrush = session.value.brushPosition
+            // Time-driven rather than Animatable, for the same reason CanvasTransformController
+            // spells out: the Compose animation APIs want a MonotonicFrameClock, and the scope
+            // this runs on has none. The easing is pure maths and works anywhere.
+            val durationMs = 150L
+            val startTime = android.os.SystemClock.uptimeMillis()
+            while (true) {
+                val fraction = ((android.os.SystemClock.uptimeMillis() - startTime).toFloat() / durationMs)
+                    .coerceIn(0f, 1f)
+                val t = FastOutSlowInEasing.transform(fraction)
+                session.update {
+                    it.copy(
+                        cursorPosition = lerp(fromCursor, anchor.cursor, t),
+                        brushPosition = lerp(fromBrush, anchor.brush, t)
+                    )
+                }
+                if (fraction >= 1f) break
+                delay(16)
+            }
+            // Land exactly on it: a glide that stops a fraction of a pixel short would leave
+            // the next stroke starting somewhere other than the one it is replacing.
+            session.update { it.copy(cursorPosition = anchor.cursor, brushPosition = anchor.brush) }
+        }
+    }
+
     fun clearAll() = manager.clearAll()
 
-    private suspend fun applyHistoryState(history: HistoryState) {
+    private suspend fun applyHistoryState(history: HistoryState, moveCursor: Boolean = true) {
+        if (moveCursor && session.value.undoRestoresCursor) {
+            history.cursorAnchor?.let(::glideCursorTo)
+        }
         // If any snapshot is unrecoverable, leave the canvas untouched rather than corrupting it
         val restored = manager.restoreBitmaps(history) ?: return
 

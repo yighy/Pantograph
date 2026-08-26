@@ -3,6 +3,7 @@ package com.yighy.pantograph.drawing
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Rect
+import androidx.compose.ui.geometry.Offset
 import com.yighy.pantograph.data.LayerEntity
 import com.yighy.pantograph.data.ProjectRepository
 import kotlinx.coroutines.CoroutineScope
@@ -46,11 +47,25 @@ class RegionSnapshot(
     @Volatile var inMemory: Bitmap?
 )
 
+/**
+ * Where the pointer stood when an operation began, so undoing it can put it back.
+ *
+ * Both points are kept because lazy mode holds the brush at a distance behind the cursor:
+ * restoring the cursor alone would leave the rope stretched across the canvas, and the next
+ * stroke would open with a long stretch of slack being taken up.
+ */
+data class CursorAnchor(val cursor: Offset, val brush: Offset)
+
 data class HistoryState(
     val layersMetadata: List<LayerEntity>,
     val activeLayerId: Long,
     /** Only the layers the operation mutated or removed; metadata-only ops have no snapshots. */
-    val snapshots: Map<Long, RegionSnapshot>
+    val snapshots: Map<Long, RegionSnapshot>,
+    /**
+     * Null for everything that has no meaningful place on the canvas - adding a layer, renaming
+     * one, reordering the stack. Only strokes set it, and only strokes move the cursor back.
+     */
+    val cursorAnchor: CursorAnchor? = null
 )
 
 /**
@@ -86,12 +101,14 @@ class DrawingHistoryManager(
         layers: List<LayerEntity>,
         activeLayerId: Long,
         historyLimit: Int,
-        specs: Map<Long, SnapshotSpec>
+        specs: Map<Long, SnapshotSpec>,
+        cursorAnchor: CursorAnchor? = null
     ) {
         val historyState = HistoryState(
             layersMetadata = layers.map { it.copy() },
             activeLayerId = activeLayerId,
-            snapshots = buildSnapshots(layerBitmaps, specs, "hist")
+            snapshots = buildSnapshots(layerBitmaps, specs, "hist"),
+            cursorAnchor = cursorAnchor
         )
         undoStack.addFirst(historyState)
 
@@ -115,7 +132,8 @@ class DrawingHistoryManager(
         layerBitmaps: Map<Long, Bitmap>,
         layers: List<LayerEntity>,
         activeLayerId: Long,
-        target: HistoryState
+        target: HistoryState,
+        cursorAnchor: CursorAnchor? = null
     ): HistoryState {
         val specs = mutableMapOf<Long, SnapshotSpec>()
         target.snapshots.forEach { (layerId, snap) ->
@@ -135,7 +153,8 @@ class DrawingHistoryManager(
         val entry = HistoryState(
             layersMetadata = layers.map { it.copy() },
             activeLayerId = activeLayerId,
-            snapshots = buildSnapshots(layerBitmaps, specs, "redo")
+            snapshots = buildSnapshots(layerBitmaps, specs, "redo"),
+            cursorAnchor = cursorAnchor
         )
         spillToDisk(entry.snapshots.values)
         return entry

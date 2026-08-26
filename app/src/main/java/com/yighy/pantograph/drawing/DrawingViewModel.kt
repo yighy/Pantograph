@@ -57,6 +57,13 @@ class DrawingViewModel(
     // pending layer saves and the history cache cleanup actually run when leaving the screen.
     private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * Where the pointer stood when the current stroke began. History is pushed at pen-up, by
+     * which time the cursor sits at the far end of the stroke - and the far end is no use to
+     * someone who undid it in order to draw it again.
+     */
+    private var strokeStartAnchor: CursorAnchor? = null
+
     private val engine = StrokeEngine()
     private val persistence = ProjectPersistence(session, repository, projectId, internalFilesDir, viewModelScope, persistScope)
     private val history = HistoryCoordinator(
@@ -206,6 +213,10 @@ class DrawingViewModel(
             .onEach { sensitivity -> session.update { it.copy(satelliteGateSensitivity = sensitivity) } }
             .launchIn(viewModelScope)
 
+        preferenceManager.undoRestoresCursor
+            .onEach { enabled -> session.update { it.copy(undoRestoresCursor = enabled) } }
+            .launchIn(viewModelScope)
+
         preferenceManager.pinnedTools
             .onEach { names -> session.update { it.copy(pinnedTools = PinnableTool.fromNames(names)) } }
             .launchIn(viewModelScope)
@@ -257,6 +268,7 @@ class DrawingViewModel(
     // ============================ Cursor & pen ============================
 
     fun moveCursor(delta: Offset) {
+        history.cancelCursorGlide()
         val state = session.value
         val movement = engine.smoothMovement(delta, state)
 
@@ -366,6 +378,8 @@ class DrawingViewModel(
         if (down) {
             // Start of stroke. History is saved at pen-up (commit time), once the stroke's
             // bounding box is known, so only the touched region gets snapshotted.
+            history.cancelCursorGlide()
+            strokeStartAnchor = CursorAnchor(state.cursorPosition, state.brushPosition)
             engine.beginStroke(state.brushPosition, state)
             updateColorHistory(state.selectedColor)
 
@@ -406,7 +420,8 @@ class DrawingViewModel(
             // Exactly one history entry per completed stroke, pushed before the layer is
             // mutated so it freezes the pre-stroke pixels of just the stroke's bounding box.
             // Pushed even for an empty stroke: abortCurrentStroke() pops unconditionally.
-            history.save(strokeSnapshotSpec(session.value))
+            history.save(strokeSnapshotSpec(session.value), strokeStartAnchor)
+            strokeStartAnchor = null
             commitStrokeToLayer()
 
             engine.endStroke()

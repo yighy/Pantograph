@@ -35,6 +35,7 @@ fun SettingsScreen(
     val hideStatusBar by preferenceManager.hideStatusBar.collectAsState(initial = true)
     val dynamicColor by preferenceManager.dynamicColor.collectAsState(initial = true)
     val offscreenCursorArrow by preferenceManager.offscreenCursorArrow.collectAsState(initial = false)
+    val undoRestoresCursor by preferenceManager.undoRestoresCursor.collectAsState(initial = true)
     val satelliteGateSensitivity by preferenceManager.satelliteGateSensitivity.collectAsState(initial = 1f)
     val context = LocalContext.current
     val versionName = remember {
@@ -140,6 +141,13 @@ fun SettingsScreen(
                     subtitle = "Edge arrow pointing at the cursor when it leaves the screen",
                     checked = offscreenCursorArrow,
                     onCheckedChange = { scope.launch { preferenceManager.setOffscreenCursorArrow(it) } }
+                )
+
+                SettingsToggleRow(
+                    label = "Undo Returns The Cursor",
+                    subtitle = "Undoing a stroke walks the cursor back to where that stroke started",
+                    checked = undoRestoresCursor,
+                    onCheckedChange = { scope.launch { preferenceManager.setUndoRestoresCursor(it) } }
                 )
             }
 

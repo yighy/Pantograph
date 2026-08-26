@@ -41,6 +41,7 @@ class PreferenceManager(private val context: Context) {
         val SCATTER_JITTER_KEY = floatPreferencesKey("scatter_jitter")
         val FLOW_JITTER_KEY = floatPreferencesKey("flow_jitter")
         val ROTATION_FOLLOW_KEY = floatPreferencesKey("rotation_follow")
+        val UNDO_RESTORES_CURSOR_KEY = booleanPreferencesKey("undo_restores_cursor")
     }
 
     // Every flow below ends in distinctUntilChanged, and it is load-bearing rather than tidy.
@@ -147,6 +148,17 @@ class PreferenceManager(private val context: Context) {
 
     val satelliteGateSensitivity: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[SATELLITE_GATE_SENSITIVITY_KEY] ?: 1f
+    }.distinctUntilChanged()
+
+    /**
+     * Whether undoing a stroke also walks the cursor back to where that stroke started.
+     *
+     * On by default: the cursor is driven relatively, so its position is earned rather than
+     * pointed at, and undo-then-redraw is common enough that re-aiming by hand every time is
+     * the bigger annoyance. Off restores the plain behaviour, where only the pixels change.
+     */
+    val undoRestoresCursor: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[UNDO_RESTORES_CURSOR_KEY] ?: true
     }.distinctUntilChanged()
 
     suspend fun setAppTheme(theme: AppTheme) {
@@ -275,6 +287,12 @@ class PreferenceManager(private val context: Context) {
     suspend fun setOffscreenCursorArrow(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[OFFSCREEN_CURSOR_ARROW_KEY] = enabled
+        }
+    }
+
+    suspend fun setUndoRestoresCursor(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[UNDO_RESTORES_CURSOR_KEY] = enabled
         }
     }
 
