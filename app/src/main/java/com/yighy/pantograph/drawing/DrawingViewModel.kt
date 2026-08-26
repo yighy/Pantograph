@@ -1,6 +1,7 @@
 package com.yighy.pantograph.drawing
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.PorterDuff
@@ -16,6 +17,9 @@ import com.yighy.pantograph.data.PreferenceManager
 import com.yighy.pantograph.data.ProjectRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
@@ -79,7 +83,13 @@ class DrawingViewModel(
 
     private fun loadProject() {
         viewModelScope.launch {
-            val project = repository.getProjectById(projectId) ?: return@launch
+            val project = repository.getProjectById(projectId)
+            if (project == null) {
+                // Nothing to wait for. Leaving isLoading set would hold the placeholder up
+                // over a canvas that is never going to be filled.
+                session.update { it.copy(isLoading = false) }
+                return@launch
+            }
             session.update {
                 it.copy(
                     projectId = projectId,
@@ -121,6 +131,23 @@ class DrawingViewModel(
                 )
             }
 
+            // Stand-in for the layers while they decode: the thumbnail the home grid already
+            // renders from, so it is on disk and at most 512px on its long edge. Launched
+            // beside the layer load rather than before it - this is a courtesy, and it must
+            // not hold up the real pixels by even one dispatch.
+            project.thumbnailPath?.let { path ->
+                launch {
+                    val preview = withContext(Dispatchers.IO) {
+                        File(path).takeIf { it.exists() }?.let { BitmapFactory.decodeFile(it.absolutePath) }
+                    }
+                    // Lost the race: painting the thumbnail over layers that are already up
+                    // would be a visible step backwards, from sharp to blurry.
+                    if (preview != null && session.value.isLoading) {
+                        session.update { it.copy(loadingPreview = preview) }
+                    }
+                }
+            }
+
             launch {
                 repository.getLayersForProject(projectId).collectLatest { loaded ->
                     if (loaded.isEmpty()) return@collectLatest
@@ -136,17 +163,27 @@ class DrawingViewModel(
                         else -> loaded.last().id
                     }
 
-                    loaded.forEach { layer ->
-                        if (!session.layerBitmaps.containsKey(layer.id)) {
-                            session.layerBitmaps[layer.id] = layers.loadBitmap(layer, project.width, project.height)
-                        }
+                    // Decoded in parallel: the PNGs are independent files, and reading them
+                    // one after another made the wait scale with the layer count - a stack
+                    // deep enough to be worth opening was the slowest to appear.
+                    val decoded = coroutineScope {
+                        loaded.filterNot { session.layerBitmaps.containsKey(it.id) }
+                            .map { layer ->
+                                async { layer.id to layers.loadBitmap(layer, project.width, project.height) }
+                            }
+                            .awaitAll()
                     }
+                    decoded.forEach { (id, bitmap) -> session.layerBitmaps[id] = bitmap }
 
                     session.update { state ->
                         state.copy(
                             layers = loaded,
                             activeLayerId = newActiveId,
-                            layerBitmaps = session.layerBitmaps.toMap()
+                            layerBitmaps = session.layerBitmaps.toMap(),
+                            isLoading = false,
+                            // Dropped in the same emission that publishes the layers, so the
+                            // swap is one frame with no white gap between the two.
+                            loadingPreview = null
                         )
                     }
                 }

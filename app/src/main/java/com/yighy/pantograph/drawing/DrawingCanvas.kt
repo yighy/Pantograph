@@ -12,6 +12,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.*
 import androidx.compose.foundation.layout.*
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -130,6 +132,9 @@ fun DrawingCanvas(
                     }
                     .background(Color.White)
             ) {
+                // Under the layers, and only until they arrive
+                LoadingPreviewLayer(viewModel)
+
                 // Layer Content - Only recomposes when renderVersion or layers change
                 CanvasLayer(viewModel)
                 
@@ -147,6 +152,32 @@ fun DrawingCanvas(
             OffscreenCursorIndicator(viewModel)
         }
     }
+}
+
+/**
+ * Stands in for the layers while their PNGs decode.
+ *
+ * It sits inside the canvas box, so it inherits the same size and the same pan/zoom/rotate
+ * transform as the real thing and lands exactly where the layers will. Both the thumbnail and
+ * the canvas are the project's own aspect ratio, so filling the bounds cannot distort it.
+ *
+ * There is no crossfade on the way out: the thumbnail and the layers are the same picture at
+ * different resolutions, so the swap reads as the image sharpening. Fading would only make a
+ * transition out of something the eye already accepts.
+ */
+@Composable
+private fun LoadingPreviewLayer(viewModel: DrawingViewModel) {
+    val isLoading by remember(viewModel) { viewModel.uiState.map { it.isLoading }.distinctUntilChanged() }.collectAsState(true)
+    val preview by remember(viewModel) { viewModel.uiState.map { it.loadingPreview }.distinctUntilChanged() }.collectAsState(null)
+    val bitmap = preview
+    if (!isLoading || bitmap == null) return
+
+    Image(
+        bitmap = remember(bitmap) { bitmap.asImageBitmap() },
+        contentDescription = null,
+        modifier = Modifier.fillMaxSize(),
+        contentScale = ContentScale.FillBounds
+    )
 }
 
 @Composable
@@ -250,9 +281,13 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                 // Normal mode
                 val isSelection = drawingMode.isSelectionTool()
                 val sb = strokeBitmap
-                val liveStroke = isActiveLayer && isPenDown && !isEraser && !isSelection && sb != null
+                // The null check is deliberately *not* folded in here: it has to sit in the
+                // conditions below to smart-cast sb for the draws, and Kotlin cannot carry a
+                // cast through a Boolean val - so having it in both places left the compiler
+                // reporting the second one as always true.
+                val liveStroke = isActiveLayer && isPenDown && !isEraser && !isSelection
 
-                if (liveStroke && sb != null &&
+                if (sb != null && liveStroke &&
                     layer.opacity >= 1f && brushOpacity >= 1f &&
                     brushTextureMask == null && selectionMask == null
                 ) {
@@ -261,7 +296,7 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                     // and skip two full-screen offscreen buffers per frame
                     layerBitmaps[layer.id]?.let { drawImage(it.asImageBitmap()) }
                     drawImage(sb.asImageBitmap())
-                } else if (liveStroke && sb != null) {
+                } else if (sb != null && liveStroke) {
                     // Live stroke: compose the stroke INTO the layer content first, then
                     // apply the layer opacity to the whole. This is the exact same math
                     // as commitStrokeToLayer + normal display, so nothing shifts at

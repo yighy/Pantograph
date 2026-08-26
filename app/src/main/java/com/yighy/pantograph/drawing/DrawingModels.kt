@@ -135,6 +135,19 @@ data class DrawingState(
     val activeLayerId: Long = -1,
     val layerBitmaps: Map<Long, android.graphics.Bitmap> = emptyMap(),
     val strokeBitmap: android.graphics.Bitmap? = null,
+    /**
+     * True until the layer bitmaps have been decoded and published. It starts true because the
+     * screen composes before any of them exist - without it, a project still reading itself off
+     * disk and a genuinely empty one drew the same picture, which is what made an open look
+     * blank for a moment.
+     */
+    val isLoading: Boolean = true,
+    /**
+     * The project's own home-grid thumbnail, held only for the length of [isLoading] and
+     * dropped as soon as the real layers land. Standing in for them keeps the project
+     * recognisable while its full-size PNGs decode.
+     */
+    val loadingPreview: android.graphics.Bitmap? = null,
     
     // Brush State
     val selectedColor: Color = Color.Black,
