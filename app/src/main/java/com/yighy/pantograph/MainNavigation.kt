@@ -1,10 +1,10 @@
 package com.yighy.pantograph
 
 import androidx.compose.runtime.Composable
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.lifecycle.viewmodel.navigation3.ViewModelStoreNavEntryDecorator
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.rememberNavBackStack
@@ -30,10 +30,8 @@ fun MainNavigation(repository: ProjectRepository, preferenceManager: PreferenceM
             when (key) {
                 is Route.Home -> NavEntry(key) {
                     val homeViewModel: HomeViewModel = viewModel(
-                        factory = object : ViewModelProvider.Factory {
-                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                return HomeViewModel(repository) as T
-                            }
+                        factory = viewModelFactory {
+                            initializer { HomeViewModel(repository) }
                         }
                     )
                     HomeScreen(
@@ -47,9 +45,9 @@ fun MainNavigation(repository: ProjectRepository, preferenceManager: PreferenceM
                 is Route.Drawing -> NavEntry(key) {
                     val drawingViewModel: DrawingViewModel = viewModel(
                         key = "drawing_${key.projectId}",
-                        factory = object : ViewModelProvider.Factory {
-                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                                return DrawingViewModel(repository, key.projectId, context.filesDir, preferenceManager, context.applicationContext) as T
+                        factory = viewModelFactory {
+                            initializer {
+                                DrawingViewModel(repository, key.projectId, context.filesDir, preferenceManager, context.applicationContext)
                             }
                         }
                     )
