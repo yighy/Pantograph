@@ -43,7 +43,7 @@ class HistoryCoordinator(
      * injected: leaving the trace needs the layer controller, which needs this class to exist
      * first, and no construction order satisfies both.
      */
-    var onStrokeUndone: ((StrokeGhost) -> Unit)? = null
+    var onStrokeUndone: ((StrokeTrace) -> Unit)? = null
 
     private fun launchHistoryOp(block: suspend () -> Unit) {
         val previous = historyJob
@@ -96,13 +96,13 @@ class HistoryCoordinator(
             // Only after the pixels are back: the trace is a consequence of the undo, and must
             // not reach the canvas before the undo it belongs to has been applied.
             if (session.value.keepUndoneStrokes) {
-                prevState.strokeGhost?.let { onStrokeUndone?.invoke(it) }
+                prevState.strokeTrace?.let { onStrokeUndone?.invoke(it) }
             }
         }
     }
 
     /** Hangs a stroke's own pixels on the entry that would undo it. */
-    fun attachStrokeGhost(ghost: StrokeGhost) = manager.attachGhostToLastEntry(ghost)
+    fun attachStrokeTrace(trace: StrokeTrace) = manager.attachTraceToLastEntry(trace)
 
     fun redo() {
         launchHistoryOp {
@@ -181,10 +181,10 @@ class HistoryCoordinator(
         // The trace layer is deliberately outside history: undo neither made it nor filled
         // it, and taking it back would throw away traces from strokes still further back that
         // the same undo has nothing to say about. Carried across every restore untouched.
-        val referenceLayers = session.value.layers.filter { it.isReference }
+        val traceLayers = session.value.layers.filter { it.isTrace }
 
         // Drop layers this state doesn't have (reverts an add/duplicate/import)
-        val targetIds = history.layersMetadata.map { it.id }.toSet() + referenceLayers.map { it.id }
+        val targetIds = history.layersMetadata.map { it.id }.toSet() + traceLayers.map { it.id }
         session.layerBitmaps.keys.retainAll(targetIds)
 
         val restorePaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
@@ -213,7 +213,7 @@ class HistoryCoordinator(
         session.update { it.copy(
             // Reference layers first: they sit at the bottom of the stack, and this list is
             // ordered the way the canvas composites it.
-            layers = referenceLayers + history.layersMetadata,
+            layers = traceLayers + history.layersMetadata,
             activeLayerId = history.activeLayerId,
             layerBitmaps = session.layerBitmaps.toMap(),
             renderVersion = it.renderVersion + 1,

@@ -63,7 +63,7 @@ data class CursorAnchor(val cursor: Offset, val brush: Offset)
  * and after: the stroke exists there in isolation, already masked and clipped exactly as it was
  * composited, right up until the next pen-down clears it.
  */
-data class StrokeGhost(val pixels: Bitmap, val left: Int, val top: Int)
+data class StrokeTrace(val pixels: Bitmap, val left: Int, val top: Int)
 
 data class HistoryState(
     val layersMetadata: List<LayerEntity>,
@@ -76,7 +76,7 @@ data class HistoryState(
      */
     val cursorAnchor: CursorAnchor? = null,
     /** Set only on stroke entries, and only while the setting asks for traces. */
-    val strokeGhost: StrokeGhost? = null
+    val strokeTrace: StrokeTrace? = null
 )
 
 /**
@@ -172,13 +172,13 @@ class DrawingHistoryManager(
     }
 
     /**
-     * Hangs [ghost] on the entry just pushed. Separate from [saveState] because the stroke is
+     * Hangs [trace] on the entry just pushed. Separate from [saveState] because the stroke is
      * only final after it has been composited, and history has to be pushed before that - it
      * freezes the pixels the composite is about to overwrite.
      */
-    fun attachGhostToLastEntry(ghost: StrokeGhost) {
+    fun attachTraceToLastEntry(trace: StrokeTrace) {
         val head = undoStack.firstOrNull() ?: return
-        undoStack[0] = head.copy(strokeGhost = ghost)
+        undoStack[0] = head.copy(strokeTrace = trace)
     }
 
     fun pushToRedo(entry: HistoryState) = redoStack.addFirst(entry)
@@ -280,7 +280,7 @@ class DrawingHistoryManager(
                 // A reference layer is never in an entry's metadata - it is not part of the
                 // drawing and history does not carry it - so without this it reads as a layer
                 // added since, and every undo would delete the traces it just collected.
-                if (currentLayer.isReference) return@forEach
+                if (currentLayer.isTrace) return@forEach
                 if (history.layersMetadata.none { it.id == currentLayer.id }) {
                     repository.deleteLayer(currentLayer)
                 }

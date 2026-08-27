@@ -258,5 +258,5 @@ data class DrawingState(
      * by none of them - it is not part of the picture and is not built by any operation that
      * gets recorded. Handing it over would have every undo delete the traces it just made.
      */
-    val drawingLayers: List<LayerEntity> get() = layers.filter { !it.isReference }
+    val drawingLayers: List<LayerEntity> get() = layers.filter { !it.isTrace }
 }

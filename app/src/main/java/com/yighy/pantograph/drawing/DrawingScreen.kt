@@ -343,7 +343,7 @@ fun LayersAndActionsSection(
     // The trace layer is only ever built by stamping something onto it, so its presence is the
     // same fact as there being traces to clear - no need to go reading pixels to find out.
     val hasTraces by remember(viewModel) {
-        viewModel.uiState.map { st -> st.layers.any { it.isReference } }.distinctUntilChanged()
+        viewModel.uiState.map { st -> st.layers.any { it.isTrace } }.distinctUntilChanged()
     }.collectAsState(false)
 
     Column(

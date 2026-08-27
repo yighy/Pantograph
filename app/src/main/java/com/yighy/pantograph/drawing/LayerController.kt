@@ -49,11 +49,11 @@ class LayerController(
      * quietly added an entry of its own would make the next one take back the trace instead of
      * the stroke before it.
      */
-    fun leaveTrace(ghost: StrokeGhost) {
+    fun leaveTrace(trace: StrokeTrace) {
         scope.launch {
-            val layerId = ensureReferenceLayer() ?: return@launch
+            val layerId = ensureTraceLayer() ?: return@launch
             val bitmap = session.layerBitmaps[layerId] ?: return@launch
-            Canvas(bitmap).drawBitmap(ghost.pixels, ghost.left.toFloat(), ghost.top.toFloat(), null)
+            Canvas(bitmap).drawBitmap(trace.pixels, trace.left.toFloat(), trace.top.toFloat(), null)
             session.update { it.copy(renderVersion = it.renderVersion + 1) }
             persistence.scheduleLayerSave(layerId)
         }
@@ -64,9 +64,9 @@ class LayerController(
      * would only get to it on the next emission - by which point the trace it was made for has
      * already been dropped for want of somewhere to go.
      */
-    private suspend fun ensureReferenceLayer(): Long? {
+    private suspend fun ensureTraceLayer(): Long? {
         val state = session.value
-        state.layers.firstOrNull { it.isReference }?.let { return it.id }
+        state.layers.firstOrNull { it.isTrace }?.let { return it.id }
         if (state.canvasWidth <= 0 || state.canvasHeight <= 0) return null
         // Underneath everything, not on top. A trace exists to be drawn over, and a faint
         // copy of the old stroke lying across the new one tints every colour you are trying to
@@ -87,7 +87,7 @@ class LayerController(
                 // Faint from the outset, so it reads as something to draw over rather than as
                 // an undo that did not take.
                 opacity = 0.35f,
-                isReference = true,
+                isTrace = true,
                 // Locked on arrival. It is a surface to work against, not one to work on, and
                 // it collects whatever undo hands it - a stray stroke landing here would be
                 // mixed in with the traces and left out of the export without ever saying so.
@@ -113,7 +113,7 @@ class LayerController(
      * pen, and this is the one control whose whole job is to clear this layer.
      */
     fun discardTraces() {
-        val layer = session.value.layers.firstOrNull { it.isReference } ?: return
+        val layer = session.value.layers.firstOrNull { it.isTrace } ?: return
         scope.launch {
             repository.deleteLayer(layer)
             session.layerBitmaps.remove(layer.id)

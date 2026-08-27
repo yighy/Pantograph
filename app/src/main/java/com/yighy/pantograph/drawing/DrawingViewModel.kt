@@ -438,7 +438,7 @@ class DrawingViewModel(
             commitStrokeToLayer()
             // After the composite, not before: that is where the texture mask and the selection
             // clip are applied, and a trace taken earlier would not be the stroke that landed.
-            if (state.keepUndoneStrokes) captureStrokeGhost(state)?.let { history.attachStrokeGhost(it) }
+            if (state.keepUndoneStrokes) captureStrokeTrace(state)?.let { history.attachStrokeTrace(it) }
 
             engine.endStroke()
             session.update { it.copy(isPenDown = false, currentPath = null) }
@@ -478,12 +478,12 @@ class DrawingViewModel(
      * the hole it made; and a gradient reports no dirty region because it repaints everything,
      * leaving nothing to crop to and a full-canvas copy per undo to hold.
      */
-    private fun captureStrokeGhost(state: DrawingState): StrokeGhost? {
+    private fun captureStrokeTrace(state: DrawingState): StrokeTrace? {
         if (state.drawingMode is DrawingMode.Eraser || state.drawingMode is DrawingMode.StraightLineEraser) return null
         val stroke = engine.strokeBitmap ?: return null
         val r = engine.dirtyRegion(stroke.width, stroke.height) ?: return null
         if (r.width() <= 0 || r.height() <= 0) return null
-        return StrokeGhost(
+        return StrokeTrace(
             Bitmap.createBitmap(stroke, r.left, r.top, r.width(), r.height()),
             r.left,
             r.top
