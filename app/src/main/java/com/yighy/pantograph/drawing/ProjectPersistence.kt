@@ -131,7 +131,9 @@ class ProjectPersistence(
             val canvas = Canvas(thumb)
             canvas.drawColor(android.graphics.Color.WHITE)
             canvas.scale(scale, scale)
-            state.layers.filter { it.isVisible }.forEach { layer ->
+            // Reference layers are working aids, not artwork: they are on the canvas to be
+            // traced over, and have no business in the picture of the project.
+            state.layers.filter { it.isVisible && !it.isReference }.forEach { layer ->
                 session.layerBitmaps[layer.id]?.let {
                     val paint = Paint().apply {
                         alpha = (layer.opacity * 255).toInt()
@@ -243,7 +245,8 @@ class ProjectPersistence(
             val canvas = Canvas(exportBitmap)
             canvas.drawColor(android.graphics.Color.WHITE)
 
-            state.layers.filter { it.isVisible }.forEach { layer ->
+            // As with the thumbnail: a reference layer never leaves the app.
+            state.layers.filter { it.isVisible && !it.isReference }.forEach { layer ->
                 session.layerBitmaps[layer.id]?.let {
                     val paint = Paint().apply { alpha = (layer.opacity * 255).toInt() }
                     canvas.drawBitmap(it, 0f, 0f, paint)

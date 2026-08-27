@@ -70,7 +70,14 @@ data class LayerEntity(
     val isVisible: Boolean = true,
     val zIndex: Int,
     val opacity: Float = 1.0f,
-    val imagePath: String? = null
+    val imagePath: String? = null,
+    /**
+     * A working layer rather than part of the drawing: it renders on the canvas but is left
+     * out of exports and of the home-grid thumbnail. Undone strokes are collected here when
+     * the setting asks for it, and it is an ordinary layer in every other respect - erase it,
+     * hide it, delete it.
+     */
+    val isReference: Boolean = false
 )
 
 @Entity(

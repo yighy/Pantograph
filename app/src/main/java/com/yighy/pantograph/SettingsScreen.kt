@@ -36,6 +36,7 @@ fun SettingsScreen(
     val dynamicColor by preferenceManager.dynamicColor.collectAsState(initial = true)
     val offscreenCursorArrow by preferenceManager.offscreenCursorArrow.collectAsState(initial = false)
     val undoRestoresCursor by preferenceManager.undoRestoresCursor.collectAsState(initial = true)
+    val keepUndoneStrokes by preferenceManager.keepUndoneStrokes.collectAsState(initial = false)
     val satelliteGateSensitivity by preferenceManager.satelliteGateSensitivity.collectAsState(initial = 1f)
     val context = LocalContext.current
     val versionName = remember {
@@ -148,6 +149,13 @@ fun SettingsScreen(
                     subtitle = "Undoing a stroke walks the cursor back to where that stroke started",
                     checked = undoRestoresCursor,
                     onCheckedChange = { scope.launch { preferenceManager.setUndoRestoresCursor(it) } }
+                )
+
+                SettingsToggleRow(
+                    label = "Keep Undone Strokes",
+                    subtitle = "Undone strokes collect on a Reference layer to trace over. Never exported; clear it like any layer",
+                    checked = keepUndoneStrokes,
+                    onCheckedChange = { scope.launch { preferenceManager.setKeepUndoneStrokes(it) } }
                 )
             }
 

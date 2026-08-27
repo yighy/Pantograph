@@ -82,6 +82,9 @@ class DrawingViewModel(
     )
 
     init {
+        // Closes the loop the constructors cannot: history has to exist before the layer
+        // controller, and only the layer controller can put a trace anywhere.
+        history.onStrokeUndone = { layers.leaveTrace(it) }
         loadProject()
         observeSettings()
     }
@@ -215,6 +218,10 @@ class DrawingViewModel(
 
         preferenceManager.undoRestoresCursor
             .onEach { enabled -> session.update { it.copy(undoRestoresCursor = enabled) } }
+            .launchIn(viewModelScope)
+
+        preferenceManager.keepUndoneStrokes
+            .onEach { enabled -> session.update { it.copy(keepUndoneStrokes = enabled) } }
             .launchIn(viewModelScope)
 
         preferenceManager.pinnedTools
@@ -423,6 +430,9 @@ class DrawingViewModel(
             history.save(strokeSnapshotSpec(session.value), strokeStartAnchor)
             strokeStartAnchor = null
             commitStrokeToLayer()
+            // After the composite, not before: that is where the texture mask and the selection
+            // clip are applied, and a trace taken earlier would not be the stroke that landed.
+            if (state.keepUndoneStrokes) captureStrokeGhost(state)?.let { history.attachStrokeGhost(it) }
 
             engine.endStroke()
             session.update { it.copy(isPenDown = false, currentPath = null) }
@@ -452,6 +462,26 @@ class DrawingViewModel(
         }
         val region = engine.dirtyRegion(layerBitmap.width, layerBitmap.height) ?: return emptyMap()
         return mapOf(state.activeLayerId to SnapshotSpec.Region(region))
+    }
+
+    /**
+     * The stroke on its own, cropped to the box it touched, for undo to leave behind.
+     *
+     * Null for the two cases where a trace would lie about what happened: an eraser stroke's
+     * bitmap is the shape that was *removed*, so painting it back would put brush colour over
+     * the hole it made; and a gradient reports no dirty region because it repaints everything,
+     * leaving nothing to crop to and a full-canvas copy per undo to hold.
+     */
+    private fun captureStrokeGhost(state: DrawingState): StrokeGhost? {
+        if (state.drawingMode is DrawingMode.Eraser || state.drawingMode is DrawingMode.StraightLineEraser) return null
+        val stroke = engine.strokeBitmap ?: return null
+        val r = engine.dirtyRegion(stroke.width, stroke.height) ?: return null
+        if (r.width() <= 0 || r.height() <= 0) return null
+        return StrokeGhost(
+            Bitmap.createBitmap(stroke, r.left, r.top, r.width(), r.height()),
+            r.left,
+            r.top
+        )
     }
 
     private fun commitStrokeToLayer() {

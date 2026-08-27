@@ -206,6 +206,8 @@ data class DrawingState(
     val cursorPosition: Offset = Offset.Zero,
     /** Mirrored from preferences; read by [HistoryCoordinator] when an entry carries an anchor. */
     val undoRestoresCursor: Boolean = true,
+    /** Mirrored from preferences; decides whether an undone stroke is kept as a trace. */
+    val keepUndoneStrokes: Boolean = false,
     val brushPosition: Offset = Offset.Zero,
     val cursorSensitivity: Float = 0.6f,
     val cursorThickness: Float = 1.0f,

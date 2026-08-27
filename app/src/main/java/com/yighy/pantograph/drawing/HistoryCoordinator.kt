@@ -38,6 +38,13 @@ class HistoryCoordinator(
      */
     private var cursorJob: Job? = null
 
+    /**
+     * Where an undone stroke goes when it is being kept. Assigned by the ViewModel rather than
+     * injected: leaving the trace needs the layer controller, which needs this class to exist
+     * first, and no construction order satisfies both.
+     */
+    var onStrokeUndone: ((StrokeGhost) -> Unit)? = null
+
     private fun launchHistoryOp(block: suspend () -> Unit) {
         val previous = historyJob
         historyJob = scope.launch(Dispatchers.Main) {
@@ -86,8 +93,16 @@ class HistoryCoordinator(
                 )
             )
             applyHistoryState(prevState)
+            // Only after the pixels are back: the trace is a consequence of the undo, and must
+            // not reach the canvas before the undo it belongs to has been applied.
+            if (session.value.keepUndoneStrokes) {
+                prevState.strokeGhost?.let { onStrokeUndone?.invoke(it) }
+            }
         }
     }
+
+    /** Hangs a stroke's own pixels on the entry that would undo it. */
+    fun attachStrokeGhost(ghost: StrokeGhost) = manager.attachGhostToLastEntry(ghost)
 
     fun redo() {
         launchHistoryOp {

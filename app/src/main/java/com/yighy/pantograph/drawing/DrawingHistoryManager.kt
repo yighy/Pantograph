@@ -56,6 +56,15 @@ class RegionSnapshot(
  */
 data class CursorAnchor(val cursor: Offset, val brush: Offset)
 
+/**
+ * A stroke's own pixels, cropped to its bounds, kept so undoing it can leave the trace behind.
+ *
+ * Taken from the engine's stroke bitmap rather than reconstructed by comparing the layer before
+ * and after: the stroke exists there in isolation, already masked and clipped exactly as it was
+ * composited, right up until the next pen-down clears it.
+ */
+data class StrokeGhost(val pixels: Bitmap, val left: Int, val top: Int)
+
 data class HistoryState(
     val layersMetadata: List<LayerEntity>,
     val activeLayerId: Long,
@@ -65,7 +74,9 @@ data class HistoryState(
      * Null for everything that has no meaningful place on the canvas - adding a layer, renaming
      * one, reordering the stack. Only strokes set it, and only strokes move the cursor back.
      */
-    val cursorAnchor: CursorAnchor? = null
+    val cursorAnchor: CursorAnchor? = null,
+    /** Set only on stroke entries, and only while the setting asks for traces. */
+    val strokeGhost: StrokeGhost? = null
 )
 
 /**
@@ -158,6 +169,16 @@ class DrawingHistoryManager(
         )
         spillToDisk(entry.snapshots.values)
         return entry
+    }
+
+    /**
+     * Hangs [ghost] on the entry just pushed. Separate from [saveState] because the stroke is
+     * only final after it has been composited, and history has to be pushed before that - it
+     * freezes the pixels the composite is about to overwrite.
+     */
+    fun attachGhostToLastEntry(ghost: StrokeGhost) {
+        val head = undoStack.firstOrNull() ?: return
+        undoStack[0] = head.copy(strokeGhost = ghost)
     }
 
     fun pushToRedo(entry: HistoryState) = redoStack.addFirst(entry)

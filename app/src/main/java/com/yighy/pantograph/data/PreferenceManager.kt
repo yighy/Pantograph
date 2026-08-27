@@ -42,6 +42,7 @@ class PreferenceManager(private val context: Context) {
         val FLOW_JITTER_KEY = floatPreferencesKey("flow_jitter")
         val ROTATION_FOLLOW_KEY = floatPreferencesKey("rotation_follow")
         val UNDO_RESTORES_CURSOR_KEY = booleanPreferencesKey("undo_restores_cursor")
+        val KEEP_UNDONE_STROKES_KEY = booleanPreferencesKey("keep_undone_strokes")
     }
 
     // Every flow below ends in distinctUntilChanged, and it is load-bearing rather than tidy.
@@ -287,6 +288,23 @@ class PreferenceManager(private val context: Context) {
     suspend fun setOffscreenCursorArrow(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[OFFSCREEN_CURSOR_ARROW_KEY] = enabled
+        }
+    }
+
+    /**
+     * Whether an undone stroke is left behind on a reference layer instead of simply going.
+     *
+     * Off by default: it changes what undo means. The stroke is gone from the drawing, but
+     * still on screen as a tracing guide, and someone who did not ask for that would read it
+     * as undo having failed.
+     */
+    val keepUndoneStrokes: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEEP_UNDONE_STROKES_KEY] ?: false
+    }.distinctUntilChanged()
+
+    suspend fun setKeepUndoneStrokes(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEEP_UNDONE_STROKES_KEY] = enabled
         }
     }
 

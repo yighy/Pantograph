@@ -41,6 +41,58 @@ class LayerController(
         }
     }
 
+    /**
+     * Stamps an undone stroke onto the project's reference layer, making the layer the first
+     * time one is needed.
+     *
+     * Deliberately pushes no history entry. This runs as part of an undo, and an undo that
+     * quietly added an entry of its own would make the next one take back the trace instead of
+     * the stroke before it.
+     */
+    fun leaveTrace(ghost: StrokeGhost) {
+        scope.launch {
+            val layerId = ensureReferenceLayer() ?: return@launch
+            val bitmap = session.layerBitmaps[layerId] ?: return@launch
+            Canvas(bitmap).drawBitmap(ghost.pixels, ghost.left.toFloat(), ghost.top.toFloat(), null)
+            session.update { it.copy(renderVersion = it.renderVersion + 1) }
+            persistence.scheduleLayerSave(layerId)
+        }
+    }
+
+    /**
+     * The bitmap is put in the map here rather than left to the layer flow's collector, which
+     * would only get to it on the next emission - by which point the trace it was made for has
+     * already been dropped for want of somewhere to go.
+     */
+    private suspend fun ensureReferenceLayer(): Long? {
+        val state = session.value
+        state.layers.firstOrNull { it.isReference }?.let { return it.id }
+        if (state.canvasWidth <= 0 || state.canvasHeight <= 0) return null
+        // Underneath everything, not on top. A trace exists to be drawn over, and a faint
+        // copy of the old stroke lying across the new one tints every colour you are trying to
+        // judge. Below the stack it shows through exactly where it is wanted - the area the
+        // undone stroke used to occupy is, by definition, empty again on the layer above it.
+        //
+        // Negative is fine: the query orders by zIndex and the first reorder renumbers the
+        // whole stack from zero anyway.
+        val zIndex = (state.layers.minOfOrNull { it.zIndex } ?: 0) - 1
+        val id = repository.insertLayer(
+            LayerEntity(
+                projectId = projectId,
+                name = "Reference",
+                zIndex = zIndex,
+                // Faint from the outset, so it reads as something to draw over rather than as
+                // an undo that did not take.
+                opacity = 0.35f,
+                isReference = true
+            )
+        )
+        session.layerBitmaps[id] = Bitmap.createBitmap(
+            state.canvasWidth, state.canvasHeight, Bitmap.Config.ARGB_8888
+        )
+        return id
+    }
+
     fun add(name: String) {
         history.save(emptyMap()) // adding a layer doesn't mutate any existing bitmap
         scope.launch {
