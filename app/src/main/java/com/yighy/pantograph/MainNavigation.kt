@@ -31,7 +31,7 @@ fun MainNavigation(repository: ProjectRepository, preferenceManager: PreferenceM
                 is Route.Home -> NavEntry(key) {
                     val homeViewModel: HomeViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { HomeViewModel(repository) }
+                            initializer { HomeViewModel(repository, context.filesDir) }
                         }
                     )
                     HomeScreen(

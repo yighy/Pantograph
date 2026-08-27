@@ -112,6 +112,7 @@ class LayerController(
         scope.launch {
             repository.deleteLayer(layer)
             session.layerBitmaps.remove(layer.id)
+            persistence.deleteLayerFile(layer.id)
             persistence.touchProject()
         }
     }
@@ -195,6 +196,7 @@ class LayerController(
             canvas.drawBitmap(sourceBitmap, 0f, 0f, paint)
             repository.deleteLayer(layer)
             session.layerBitmaps.remove(layer.id)
+            persistence.deleteLayerFile(layer.id)
             persistence.saveLayerNow(targetLayer.id)
             persistence.touchProject()
         }

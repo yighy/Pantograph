@@ -62,6 +62,23 @@ class ProjectPersistence(
         }
     }
 
+    /**
+     * Reclaims a layer's PNG once the layer itself is gone.
+     *
+     * Safe to call for a deletion that undo can take back: restoring one re-registers its
+     * bitmap and schedules a save, so the file is written again on the way back. A batched
+     * save still pending for it finds nothing in [DrawingSession.layerBitmaps] and skips,
+     * so this cannot race a rewrite either.
+     *
+     * On [persistScope] rather than the ViewModel's, so leaving the screen in the same breath
+     * as the delete does not cancel the cleanup.
+     */
+    fun deleteLayerFile(layerId: Long) {
+        persistScope.launch(Dispatchers.IO) {
+            File(internalFilesDir, "layer_${layerId}.png").delete()
+        }
+    }
+
     /** Writes one layer's PNG straight away, for edits that shouldn't wait for the batch. */
     fun saveLayerNow(layerId: Long) {
         scope.launch(Dispatchers.IO) {

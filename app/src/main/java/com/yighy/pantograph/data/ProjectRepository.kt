@@ -18,6 +18,10 @@ class ProjectRepository(private val projectDao: ProjectDao) {
 
     fun getLayersForProject(projectId: Long): Flow<List<LayerEntity>> = projectDao.getLayersForProject(projectId)
 
+    suspend fun getAllLayerIds(): List<Long> = projectDao.getAllLayerIds()
+
+    suspend fun getAllProjectIds(): List<Long> = projectDao.getAllProjectIds()
+
     suspend fun insertLayer(layer: LayerEntity): Long = projectDao.insertLayer(layer)
     
     suspend fun updateLayer(layer: LayerEntity) = projectDao.updateLayer(layer)

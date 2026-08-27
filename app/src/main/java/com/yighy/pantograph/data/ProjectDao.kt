@@ -20,6 +20,13 @@ interface ProjectDao {
     @Delete
     suspend fun deleteProject(project: ProjectEntity)
 
+    /** Ids only, for the startup sweep that reclaims pixels no layer claims any more. */
+    @Query("SELECT id FROM layers")
+    suspend fun getAllLayerIds(): List<Long>
+
+    @Query("SELECT id FROM projects")
+    suspend fun getAllProjectIds(): List<Long>
+
     @Query("SELECT * FROM layers WHERE projectId = :projectId ORDER BY zIndex ASC")
     fun getLayersForProject(projectId: Long): Flow<List<LayerEntity>>
 
