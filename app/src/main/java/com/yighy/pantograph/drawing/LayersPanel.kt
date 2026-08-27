@@ -3,6 +3,7 @@ package com.yighy.pantograph.drawing
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -33,6 +34,7 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
+import com.yighy.pantograph.ui.theme.MotionTokens
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -303,6 +305,26 @@ fun FloatingLayersPanel(
                 items(displayLayers, key = { it.id }) { layer ->
                     val isActive = layer.id == activeLayerId
                     val isDragging = draggingId == layer.id
+                    // Border weight alone made the active layer a thing you compared rather
+                    // than saw: a column of white tiles differing by 1.5dp of edge takes a
+                    // second look to read. The tile now lifts as well, with the accent thrown
+                    // into its shadow, so the selection carries at a glance and in the dark
+                    // scheme - where a thin outline on white had the least to work with.
+                    val borderWidth by animateDpAsState(
+                        targetValue = if (isActive) 3.dp else 0.5.dp,
+                        label = "layerBorder"
+                    )
+                    val lift by animateDpAsState(
+                        targetValue = if (isActive) 8.dp else 0.dp,
+                        label = "layerLift"
+                    )
+                    val borderColor by animateColorAsState(
+                        targetValue = if (isActive) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outlineVariant,
+                        animationSpec = MotionTokens.colorTransition,
+                        label = "layerBorderTint"
+                    )
+                    val accent = MaterialTheme.colorScheme.primary
                     Box(
                         modifier = Modifier
                             // The dragged item follows the finger; placement animation
@@ -316,11 +338,21 @@ fun FloatingLayersPanel(
                                 scaleY = scale
                             }
                             .size(50.dp)
+                            // Tinted rather than the default black: on a rail of white tiles a
+                            // grey shadow reads as depth, an accent-coloured one reads as the
+                            // selection. Falls back to a plain shadow below Android P, where
+                            // the border is still carrying the state on its own.
+                            .shadow(
+                                elevation = lift,
+                                shape = MaterialTheme.shapes.extraSmall,
+                                ambientColor = accent,
+                                spotColor = accent
+                            )
                             .clip(MaterialTheme.shapes.extraSmall)
                             .background(Color.White)
                             .border(
-                                width = if (isActive) 2.dp else 0.5.dp,
-                                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+                                width = borderWidth,
+                                color = borderColor,
                                 shape = MaterialTheme.shapes.extraSmall
                             )
                             .pointerInput(layer.id, isActive) {
