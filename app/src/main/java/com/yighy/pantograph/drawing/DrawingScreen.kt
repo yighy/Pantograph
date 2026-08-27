@@ -36,6 +36,9 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -247,6 +250,45 @@ fun DrawingScreen(
     }
 }
 
+/**
+ * One armed tool, and a tap to disarm it. Every entry in [PinnableTool] is a toggle, so the
+ * chip can hand the job straight back to the same call the tools menu makes - there is no
+ * second way to turn a mode off to keep in step with this one.
+ */
+@Composable
+private fun ActiveToolChip(tool: PinnableTool, onDismiss: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .clickable(onClick = onDismiss)
+            .semantics { contentDescription = "${tool.label} is on, tap to turn it off" }
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
+        ) {
+            Icon(tool.icon, contentDescription = null, modifier = Modifier.size(14.dp))
+            Spacer(Modifier.width(4.dp))
+            Text(
+                tool.label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Medium
+            )
+            Spacer(Modifier.width(3.dp))
+            // The cross is the affordance: a chip that only named the mode would read as a
+            // label, and nobody taps a label.
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = null,
+                modifier = Modifier.size(13.dp)
+            )
+        }
+    }
+}
+
 @Composable
 fun LayersAndActionsSection(
     viewModel: DrawingViewModel,
@@ -277,10 +319,18 @@ fun LayersAndActionsSection(
     val renderVersion by remember(viewModel) { viewModel.uiState.map { it.renderVersion }.distinctUntilChanged() }.collectAsState(0)
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
+    // Derived in the flow rather than rebuilt from the fields above, so the row cannot drift
+    // from what PinnableTool.isActive considers on. Only ever one or two entries: drawingMode
+    // holds a single value, so every tool but Lazy excludes all the others.
+    val activeTools by remember(viewModel) {
+        viewModel.uiState.map { state -> PinnableTool.entries.filter { it.isActive(state) } }.distinctUntilChanged()
+    }.collectAsState(emptyList())
 
     Column(
-        horizontalAlignment = Alignment.End,
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalAlignment = Alignment.End
+        // No verticalArrangement: a collapsed AnimatedVisibility is still a slot, so spacedBy
+        // would hold its gap open for a chip row that is not there. Each child below carries
+        // its own top padding instead, which costs nothing while it is hidden.
     ) {
         // Expressive Grouped Container
         Surface(
@@ -398,6 +448,46 @@ fun LayersAndActionsSection(
             }
         }
 
+        // The tools button above only says that *something* is on; these say which, and take
+        // it back off. Below the container rather than inside it, so the row is free to run
+        // out into the empty canvas on its left instead of being penned into the width of
+        // three icon buttons. The layers rail simply starts lower when both are showing.
+        //
+        // Nothing at all in plain freehand: the controls in this app live off the canvas, and
+        // a strip that is empty most of the time would be chrome charging rent.
+        //
+        // lastTools is held over so the exit has something to animate: the content recomposes
+        // while the transition is still running, so reading activeTools directly emptied the
+        // row on the first frame of the close and left an empty box to collapse on its own -
+        // same reason lastEditingLayerId exists further down.
+        var lastTools by remember { mutableStateOf(activeTools) }
+        if (activeTools.isNotEmpty()) lastTools = activeTools
+
+        AnimatedVisibility(
+            visible = activeTools.isNotEmpty(),
+            enter = fadeIn(MotionTokens.expressiveEnter) + expandVertically(MotionTokens.panelTransition),
+            exit = fadeOut(MotionTokens.expressiveExit) + shrinkVertically(MotionTokens.panelTransition)
+        ) {
+            // FlowRow, not Row: the set of pinnable tools is meant to grow, and a plain row
+            // has no answer to running out of width - it squeezes, then clips off the left.
+            // Today at most two can be on at once (six of the seven read the single
+            // drawingMode, so they exclude each other; only Lazy is independent), but the
+            // first tool added with a toggle of its own breaks that quietly.
+            //
+            // No width cap out here: the row may take the whole screen less its margins and
+            // only wraps once it has actually used them. Each line packs to the right, so a
+            // half-full one still hangs off the same edge as the buttons above.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier.padding(top = 8.dp)
+            ) {
+                lastTools.forEach { tool ->
+                    ActiveToolChip(tool) { tool.toggle(viewModel, onRequestSettingsPanel) }
+                }
+            }
+        }
+
         if (showAboutDialog) {
             AboutDialog(onDismiss = { showAboutDialog = false })
         }
@@ -411,19 +501,21 @@ fun LayersAndActionsSection(
             enter = slideInHorizontally(animationSpec = MotionTokens.slideEnter, initialOffsetX = { it * 2 }),
             exit = slideOutHorizontally(animationSpec = MotionTokens.slideExit, targetOffsetX = { it * 2 })
         ) {
-            FloatingLayersPanel(
-                layers = layers,
-                activeLayerId = activeLayerId,
-                layerBitmaps = layerBitmaps,
-                renderVersion = renderVersion,
-                onSelectLayer = {
-                    viewModel.selectLayer(it)
-                    onSelectLayer(it)
-                },
-                onEditLayer = { onEditLayer(it.id) },
-                onAddLayer = { viewModel.addLayer("New Layer") },
-                onReorder = { from, to -> viewModel.reorderLayers(from, to) }
-            )
+            Box(modifier = Modifier.padding(top = 8.dp)) {
+                FloatingLayersPanel(
+                    layers = layers,
+                    activeLayerId = activeLayerId,
+                    layerBitmaps = layerBitmaps,
+                    renderVersion = renderVersion,
+                    onSelectLayer = {
+                        viewModel.selectLayer(it)
+                        onSelectLayer(it)
+                    },
+                    onEditLayer = { onEditLayer(it.id) },
+                    onAddLayer = { viewModel.addLayer("New Layer") },
+                    onReorder = { from, to -> viewModel.reorderLayers(from, to) }
+                )
+            }
         }
     }
 }
