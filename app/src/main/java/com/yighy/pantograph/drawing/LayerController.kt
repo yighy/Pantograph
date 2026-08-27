@@ -105,12 +105,21 @@ class LayerController(
     }
 
     fun delete(layer: LayerEntity) {
+        if (layer.isLocked) return
         if (session.value.layers.size <= 1) return
         // The deleted layer's bitmap is kept by reference (never mutated) so undo can re-add it
         history.save(mapOf(layer.id to SnapshotSpec.FullByRef))
         scope.launch {
             repository.deleteLayer(layer)
             session.layerBitmaps.remove(layer.id)
+            persistence.touchProject()
+        }
+    }
+
+    fun toggleLock(layer: LayerEntity) {
+        history.save(emptyMap()) // only flips a metadata flag, no bitmap pixels change
+        scope.launch {
+            repository.updateLayer(layer.copy(isLocked = !layer.isLocked))
             persistence.touchProject()
         }
     }
@@ -172,6 +181,9 @@ class LayerController(
         val index = layers.indexOfFirst { it.id == layer.id }
         if (index <= 0) return
         val targetLayer = layers[index - 1]
+        // Both ends: the source is destroyed by the merge and the target is drawn into, so a
+        // lock on either one is a lock on the operation.
+        if (layer.isLocked || targetLayer.isLocked) return
 
         // Target is drawn into in place (full copy); source is removed untouched (by ref)
         history.save(mapOf(targetLayer.id to SnapshotSpec.FullMutated, layer.id to SnapshotSpec.FullByRef))
@@ -202,6 +214,7 @@ class LayerController(
     }
 
     fun clear(id: Long) {
+        if (session.value.layers.find { it.id == id }?.isLocked == true) return
         history.save(mapOf(id to SnapshotSpec.FullMutated)) // erased in place right below
         session.layerBitmaps[id]?.eraseColor(android.graphics.Color.TRANSPARENT)
         session.bumpRender()

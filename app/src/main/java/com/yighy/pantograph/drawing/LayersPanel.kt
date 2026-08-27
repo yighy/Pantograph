@@ -119,7 +119,8 @@ fun LayerOptionsPanel(
                 )
             }
 
-            // Quick Actions Grid
+            // The actions that leave the pixels alone. These stay available on a locked
+            // layer, because none of them costs anything the lock could not undo.
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SmallActionChip(
                     icon = if (layer.isVisible) Icons.Rounded.Visibility else Icons.Rounded.VisibilityOff,
@@ -128,37 +129,53 @@ fun LayerOptionsPanel(
                     modifier = Modifier.weight(1f)
                 )
                 SmallActionChip(
+                    icon = if (layer.isLocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                    label = if (layer.isLocked) "Unlock" else "Lock",
+                    onClick = { viewModel.toggleLayerLock(layer) },
+                    modifier = Modifier.weight(1f),
+                    containerColor = if (layer.isLocked) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = if (layer.isLocked) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                SmallActionChip(
                     icon = Icons.Rounded.ContentCopy,
                     label = "Duplicate",
                     onClick = { viewModel.duplicateLayer(layer); onDismiss() },
                     modifier = Modifier.weight(1f)
                 )
-                SmallActionChip(
-                    icon = Icons.Rounded.CleaningServices,
-                    label = "Clear",
-                    onClick = { viewModel.clearLayer(layer.id); onDismiss() },
-                    modifier = Modifier.weight(1f)
-                )
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (layers.indexOf(layer) > 0) {
+            // The three that rewrite or remove pixels. Dropped from the panel entirely while
+            // the layer is locked rather than left to be tapped and ignored: a control that
+            // does nothing teaches you the app is broken, and the guards in LayerController
+            // would refuse them anyway.
+            if (!layer.isLocked) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     SmallActionChip(
-                        icon = Icons.Rounded.Merge,
-                        label = "Merge",
-                        onClick = { viewModel.mergeDown(layer); onDismiss() },
+                        icon = Icons.Rounded.CleaningServices,
+                        label = "Clear",
+                        onClick = { viewModel.clearLayer(layer.id); onDismiss() },
                         modifier = Modifier.weight(1f)
                     )
-                }
-                if (layers.size > 1) {
-                    SmallActionChip(
-                        icon = Icons.Rounded.Delete,
-                        label = "Delete",
-                        onClick = { viewModel.deleteLayer(layer); onDismiss() },
-                        modifier = Modifier.weight(1f),
-                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
-                        contentColor = MaterialTheme.colorScheme.error
-                    )
+                    if (layers.indexOf(layer) > 0) {
+                        SmallActionChip(
+                            icon = Icons.Rounded.Merge,
+                            label = "Merge",
+                            onClick = { viewModel.mergeDown(layer); onDismiss() },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (layers.size > 1) {
+                        SmallActionChip(
+                            icon = Icons.Rounded.Delete,
+                            label = "Delete",
+                            onClick = { viewModel.deleteLayer(layer); onDismiss() },
+                            modifier = Modifier.weight(1f),
+                            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
 
@@ -437,6 +454,28 @@ fun FloatingLayersPanel(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Default.VisibilityOff, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.inverseOnSurface)
+                            }
+                        }
+
+                        // A corner badge rather than a full scrim: hiding a layer is about what
+                        // you can see, so it dims the whole tile; locking is about what you can
+                        // do to it, and obscuring the artwork to say so would be backwards.
+                        if (layer.isLocked) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(2.dp)
+                                    .size(15.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Lock,
+                                    contentDescription = "Locked",
+                                    modifier = Modifier.size(10.dp),
+                                    tint = MaterialTheme.colorScheme.inverseOnSurface
+                                )
                             }
                         }
                     }

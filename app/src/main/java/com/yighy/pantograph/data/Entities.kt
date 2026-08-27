@@ -77,7 +77,14 @@ data class LayerEntity(
      * the setting asks for it, and it is an ordinary layer in every other respect - erase it,
      * hide it, delete it.
      */
-    val isReference: Boolean = false
+    val isReference: Boolean = false,
+    /**
+     * Protects the pixels, not the layer. A locked layer still shows, still moves up and down
+     * the stack, still renames and takes an opacity - what it refuses is anything that would
+     * change what is drawn on it, which is the thing you cannot get back by flipping the flag
+     * again.
+     */
+    val isLocked: Boolean = false
 )
 
 @Entity(

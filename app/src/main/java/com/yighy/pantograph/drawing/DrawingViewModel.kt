@@ -365,6 +365,12 @@ class DrawingViewModel(
             return
         }
 
+        // Everything past the eyedropper above writes to the active layer - the selection
+        // tools included, since what they arm ends in moving or deleting its pixels. Reading
+        // a colour off a locked layer stays allowed, which is why the guard sits here and not
+        // at the top of the function.
+        if (down && state.layers.find { it.id == state.activeLayerId }?.isLocked == true) return
+
         if (state.drawingMode.isSelectionTool()) {
             selection.handlePen(down, state)
             return
@@ -638,6 +644,13 @@ class DrawingViewModel(
     fun addLayer(name: String) = layers.add(name)
     fun deleteLayer(layer: LayerEntity) = layers.delete(layer)
     fun toggleLayerVisibility(layer: LayerEntity) = layers.toggleVisibility(layer)
+    fun toggleLayerLock(layer: LayerEntity) = layers.toggleLock(layer)
+
+    /** Backs the readout chip, which knows the active layer is locked but not which one it is. */
+    fun unlockActiveLayer() {
+        val state = session.value
+        state.layers.find { it.id == state.activeLayerId && it.isLocked }?.let { layers.toggleLock(it) }
+    }
     fun renameLayer(layer: LayerEntity, newName: String) = layers.rename(layer, newName)
     fun setLayerOpacity(layer: LayerEntity, opacity: Float) = layers.setOpacity(layer, opacity)
     fun persistLayerOpacity(layerId: Long) = layers.persistOpacity(layerId)

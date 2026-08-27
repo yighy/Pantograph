@@ -251,34 +251,43 @@ fun DrawingScreen(
 }
 
 /**
- * One armed tool, and a tap to disarm it. Every entry in [PinnableTool] is a toggle, so the
- * chip can hand the job straight back to the same call the tools menu makes - there is no
- * second way to turn a mode off to keep in step with this one.
+ * One thing that is quietly changing how the canvas behaves, and a tap to stop it.
+ *
+ * Every state that gets a chip here is a toggle, so the chip hands the job straight back to
+ * whatever the menus already call - there is no second way to switch something off that would
+ * have to be kept in step with this one.
  */
 @Composable
-private fun ActiveToolChip(tool: PinnableTool, onDismiss: () -> Unit) {
+private fun ActiveStateChip(
+    icon: ImageVector,
+    label: String,
+    description: String,
+    onDismiss: () -> Unit,
+    container: Color = MaterialTheme.colorScheme.primaryContainer,
+    content: Color = MaterialTheme.colorScheme.onPrimaryContainer
+) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        color = container,
+        contentColor = content,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .clickable(onClick = onDismiss)
-            .semantics { contentDescription = "${tool.label} is on, tap to turn it off" }
+            .semantics { contentDescription = description }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
         ) {
-            Icon(tool.icon, contentDescription = null, modifier = Modifier.size(14.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(4.dp))
             Text(
-                tool.label,
+                label,
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium
             )
             Spacer(Modifier.width(3.dp))
-            // The cross is the affordance: a chip that only named the mode would read as a
+            // The cross is the affordance: a chip that only named the state would read as a
             // label, and nobody taps a label.
             Icon(
                 Icons.Rounded.Close,
@@ -325,6 +334,12 @@ fun LayersAndActionsSection(
     val activeTools by remember(viewModel) {
         viewModel.uiState.map { state -> PinnableTool.entries.filter { it.isActive(state) } }.distinctUntilChanged()
     }.collectAsState(emptyList())
+    // A locked active layer belongs in this row for the same reason the tools do: it changes
+    // what the pen does, silently, and the alternative is discovering it by drawing nothing.
+    val activeLayerLocked by remember(viewModel) {
+        viewModel.uiState.map { st -> st.layers.any { it.id == st.activeLayerId && it.isLocked } }
+            .distinctUntilChanged()
+    }.collectAsState(false)
 
     Column(
         horizontalAlignment = Alignment.End
@@ -460,11 +475,16 @@ fun LayersAndActionsSection(
         // while the transition is still running, so reading activeTools directly emptied the
         // row on the first frame of the close and left an empty box to collapse on its own -
         // same reason lastEditingLayerId exists further down.
+        val anyChips = activeTools.isNotEmpty() || activeLayerLocked
         var lastTools by remember { mutableStateOf(activeTools) }
-        if (activeTools.isNotEmpty()) lastTools = activeTools
+        var lastLocked by remember { mutableStateOf(false) }
+        if (anyChips) {
+            lastTools = activeTools
+            lastLocked = activeLayerLocked
+        }
 
         AnimatedVisibility(
-            visible = activeTools.isNotEmpty(),
+            visible = anyChips,
             enter = fadeIn(MotionTokens.expressiveEnter) + expandVertically(MotionTokens.panelTransition),
             exit = fadeOut(MotionTokens.expressiveExit) + shrinkVertically(MotionTokens.panelTransition)
         ) {
@@ -483,7 +503,24 @@ fun LayersAndActionsSection(
                 modifier = Modifier.padding(top = 8.dp)
             ) {
                 lastTools.forEach { tool ->
-                    ActiveToolChip(tool) { tool.toggle(viewModel, onRequestSettingsPanel) }
+                    ActiveStateChip(
+                        icon = tool.icon,
+                        label = tool.label,
+                        description = "${tool.label} is on, tap to turn it off",
+                        onDismiss = { tool.toggle(viewModel, onRequestSettingsPanel) }
+                    )
+                }
+                if (lastLocked) {
+                    // Error colours, not the accent: the tools are things you turned on, this
+                    // is something standing in your way.
+                    ActiveStateChip(
+                        icon = Icons.Rounded.Lock,
+                        label = "Locked",
+                        description = "The active layer is locked, tap to unlock it",
+                        onDismiss = { viewModel.unlockActiveLayer() },
+                        container = MaterialTheme.colorScheme.errorContainer,
+                        content = MaterialTheme.colorScheme.onErrorContainer
+                    )
                 }
             }
         }
