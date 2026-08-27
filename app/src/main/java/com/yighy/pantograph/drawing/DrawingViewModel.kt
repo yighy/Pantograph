@@ -645,6 +645,7 @@ class DrawingViewModel(
     fun deleteLayer(layer: LayerEntity) = layers.delete(layer)
     fun toggleLayerVisibility(layer: LayerEntity) = layers.toggleVisibility(layer)
     fun toggleLayerLock(layer: LayerEntity) = layers.toggleLock(layer)
+    fun discardTraces() = layers.discardTraces()
 
     /** Backs the readout chip, which knows the active layer is locked but not which one it is. */
     fun unlockActiveLayer() {

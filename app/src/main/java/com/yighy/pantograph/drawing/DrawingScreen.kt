@@ -340,6 +340,11 @@ fun LayersAndActionsSection(
         viewModel.uiState.map { st -> st.layers.any { it.id == st.activeLayerId && it.isLocked } }
             .distinctUntilChanged()
     }.collectAsState(false)
+    // The trace layer is only ever built by stamping something onto it, so its presence is the
+    // same fact as there being traces to clear - no need to go reading pixels to find out.
+    val hasTraces by remember(viewModel) {
+        viewModel.uiState.map { st -> st.layers.any { it.isReference } }.distinctUntilChanged()
+    }.collectAsState(false)
 
     Column(
         horizontalAlignment = Alignment.End
@@ -475,12 +480,14 @@ fun LayersAndActionsSection(
         // while the transition is still running, so reading activeTools directly emptied the
         // row on the first frame of the close and left an empty box to collapse on its own -
         // same reason lastEditingLayerId exists further down.
-        val anyChips = activeTools.isNotEmpty() || activeLayerLocked
+        val anyChips = activeTools.isNotEmpty() || activeLayerLocked || hasTraces
         var lastTools by remember { mutableStateOf(activeTools) }
         var lastLocked by remember { mutableStateOf(false) }
+        var lastTraces by remember { mutableStateOf(false) }
         if (anyChips) {
             lastTools = activeTools
             lastLocked = activeLayerLocked
+            lastTraces = hasTraces
         }
 
         AnimatedVisibility(
@@ -520,6 +527,18 @@ fun LayersAndActionsSection(
                         onDismiss = { viewModel.unlockActiveLayer() },
                         container = MaterialTheme.colorScheme.errorContainer,
                         content = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+                if (lastTraces) {
+                    // Tertiary: neither a mode you armed nor something blocking you, just a
+                    // surface that has filled up and can be emptied.
+                    ActiveStateChip(
+                        icon = Icons.Rounded.CleaningServices,
+                        label = "Traces",
+                        description = "Undone strokes are being kept, tap to clear them",
+                        onDismiss = { viewModel.discardTraces() },
+                        container = MaterialTheme.colorScheme.tertiaryContainer,
+                        content = MaterialTheme.colorScheme.onTertiaryContainer
                     )
                 }
             }

@@ -153,7 +153,7 @@ fun SettingsScreen(
 
                 SettingsToggleRow(
                     label = "Keep Undone Strokes",
-                    subtitle = "Undone strokes collect on a Reference layer to trace over. Never exported; clear it like any layer",
+                    subtitle = "Undone strokes collect on a locked Traces layer to draw over. Never exported; clear it from the chip at the top",
                     checked = keepUndoneStrokes,
                     onCheckedChange = { scope.launch { preferenceManager.setKeepUndoneStrokes(it) } }
                 )

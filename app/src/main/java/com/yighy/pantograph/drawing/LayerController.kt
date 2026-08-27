@@ -79,18 +79,48 @@ class LayerController(
         val id = repository.insertLayer(
             LayerEntity(
                 projectId = projectId,
-                name = "Reference",
+                // Named for the chip that clears it. "Reference" was already the name of
+                // the imported reference image, and one word for two unrelated features is
+                // how a layer stack starts lying to you.
+                name = "Traces",
                 zIndex = zIndex,
                 // Faint from the outset, so it reads as something to draw over rather than as
                 // an undo that did not take.
                 opacity = 0.35f,
-                isReference = true
+                isReference = true,
+                // Locked on arrival. It is a surface to work against, not one to work on, and
+                // it collects whatever undo hands it - a stray stroke landing here would be
+                // mixed in with the traces and left out of the export without ever saying so.
+                isLocked = true
             )
         )
         session.layerBitmaps[id] = Bitmap.createBitmap(
             state.canvasWidth, state.canvasHeight, Bitmap.Config.ARGB_8888
         )
         return id
+    }
+
+    /**
+     * Throws the trace layer away wholesale, lock and all.
+     *
+     * Deletion rather than erasure, and no history entry. The layer only ever exists because
+     * something was stamped onto it, so removing it keeps "there is a trace layer" and "there
+     * are traces" the same statement - an emptied one left in the stack would go on claiming
+     * traces that are not there, and would still be claiming them after a restart. The next
+     * undo builds a fresh one.
+     *
+     * Going through the lock rather than around it is the point: the lock exists to stop the
+     * pen, and this is the one control whose whole job is to clear this layer.
+     */
+    fun discardTraces() {
+        val layer = session.value.layers.firstOrNull { it.isReference } ?: return
+        scope.launch {
+            repository.deleteLayer(layer)
+            session.layerBitmaps.remove(layer.id)
+            persistence.deleteLayerFile(layer.id)
+            session.bumpRender()
+            persistence.touchProject()
+        }
     }
 
     fun add(name: String) {

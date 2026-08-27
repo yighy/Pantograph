@@ -277,6 +277,10 @@ class DrawingHistoryManager(
         withContext(Dispatchers.IO) {
             val currentLayers = repository.getLayersForProject(projectId).first()
             currentLayers.forEach { currentLayer ->
+                // A reference layer is never in an entry's metadata - it is not part of the
+                // drawing and history does not carry it - so without this it reads as a layer
+                // added since, and every undo would delete the traces it just collected.
+                if (currentLayer.isReference) return@forEach
                 if (history.layersMetadata.none { it.id == currentLayer.id }) {
                     repository.deleteLayer(currentLayer)
                 }

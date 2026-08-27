@@ -62,7 +62,7 @@ class HistoryCoordinator(
         val state = session.value
         if (state.projectId == -1L) return
         manager.saveState(
-            session.layerBitmaps, state.layers, state.activeLayerId, state.historyLimit, specs, cursorAnchor
+            session.layerBitmaps, state.drawingLayers, state.activeLayerId, state.historyLimit, specs, cursorAnchor
         )
         session.update { it.copy(canUndo = true, canRedo = false) }
     }
@@ -88,7 +88,7 @@ class HistoryCoordinator(
             val state = session.value
             manager.pushToRedo(
                 manager.captureInverse(
-                    session.layerBitmaps, state.layers, state.activeLayerId, prevState,
+                    session.layerBitmaps, state.drawingLayers, state.activeLayerId, prevState,
                     cursorAnchor = inverseAnchor(prevState, state)
                 )
             )
@@ -110,7 +110,7 @@ class HistoryCoordinator(
             val state = session.value
             manager.pushToUndo(
                 manager.captureInverse(
-                    session.layerBitmaps, state.layers, state.activeLayerId, nextState,
+                    session.layerBitmaps, state.drawingLayers, state.activeLayerId, nextState,
                     cursorAnchor = inverseAnchor(nextState, state)
                 )
             )
@@ -178,8 +178,13 @@ class HistoryCoordinator(
 
         manager.syncLayersWithDatabase(history)
 
+        // The trace layer is deliberately outside history: undo neither made it nor filled
+        // it, and taking it back would throw away traces from strokes still further back that
+        // the same undo has nothing to say about. Carried across every restore untouched.
+        val referenceLayers = session.value.layers.filter { it.isReference }
+
         // Drop layers this state doesn't have (reverts an add/duplicate/import)
-        val targetIds = history.layersMetadata.map { it.id }.toSet()
+        val targetIds = history.layersMetadata.map { it.id }.toSet() + referenceLayers.map { it.id }
         session.layerBitmaps.keys.retainAll(targetIds)
 
         val restorePaint = Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC) }
@@ -206,7 +211,9 @@ class HistoryCoordinator(
         }
 
         session.update { it.copy(
-            layers = history.layersMetadata,
+            // Reference layers first: they sit at the bottom of the stack, and this list is
+            // ordered the way the canvas composites it.
+            layers = referenceLayers + history.layersMetadata,
             activeLayerId = history.activeLayerId,
             layerBitmaps = session.layerBitmaps.toMap(),
             renderVersion = it.renderVersion + 1,

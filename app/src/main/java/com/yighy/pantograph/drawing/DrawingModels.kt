@@ -250,4 +250,13 @@ data class DrawingState(
     val floatingOffset: Offset = Offset.Zero,
     val floatingScale: Float = 1f,
     val floatingRotation: Float = 0f
-)
+) {
+    /**
+     * The layers undo/redo is allowed to see: the drawing, without the trace surface.
+     *
+     * History prunes anything an entry does not name, and the trace layer is by design named
+     * by none of them - it is not part of the picture and is not built by any operation that
+     * gets recorded. Handing it over would have every undo delete the traces it just made.
+     */
+    val drawingLayers: List<LayerEntity> get() = layers.filter { !it.isReference }
+}
