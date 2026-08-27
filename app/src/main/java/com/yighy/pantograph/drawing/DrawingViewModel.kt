@@ -613,7 +613,21 @@ class DrawingViewModel(
      */
     fun abortCurrentStroke() = history.abortLastEntry()
 
+    /**
+     * Both refuse to run mid-stroke.
+     *
+     * The pen is a toggle here, not a hold, so the toolbar stays reachable with a stroke open
+     * underneath it. Restoring pixels at that point would paste over a layer the live stroke
+     * has not been composited into yet, and the entry for that stroke is not pushed until
+     * pen-up - so the undo would take back the wrong thing and then be overwritten by a
+     * commit that no longer matches anything on the stack.
+     *
+     * Guarded here rather than at each caller: the mode gate already refuses, but the toolbar
+     * buttons and the screen-reader action did not, and the next caller would have to
+     * remember.
+     */
     fun undo() {
+        if (session.value.isPenDown) return
         // Undo while a selection is floating cancels the move; a closed selection is kept
         // (it's a drawing mask now) and undo applies to strokes as usual
         if (session.value.floatingBitmap != null) { selection.cancel(); return }
@@ -621,6 +635,7 @@ class DrawingViewModel(
     }
 
     fun redo() {
+        if (session.value.isPenDown) return
         if (session.value.floatingBitmap != null) { selection.cancel(); return }
         history.redo()
     }

@@ -64,6 +64,9 @@ fun DrawingToolbar(
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val canUndo by remember(viewModel) { viewModel.uiState.map { it.canUndo }.distinctUntilChanged() }.collectAsState(false)
     val canRedo by remember(viewModel) { viewModel.uiState.map { it.canRedo }.distinctUntilChanged() }.collectAsState(false)
+    // Greyed out mid-stroke rather than tapped and ignored: the ViewModel refuses either way,
+    // but a button that looks live and does nothing reads as the app having missed the tap.
+    val isPenDown by remember(viewModel) { viewModel.uiState.map { it.isPenDown }.distinctUntilChanged() }.collectAsState(false)
     val selectedColor by remember(viewModel) { viewModel.uiState.map { it.selectedColor }.distinctUntilChanged() }.collectAsState(Color.Black)
 
     val isSelectionMode = drawingMode.isSelectionTool()
@@ -206,10 +209,10 @@ fun DrawingToolbar(
                 ToolbarSeparator()
 
                 // History
-                IconButton(onClick = { viewModel.undo() }, enabled = canUndo) {
+                IconButton(onClick = { viewModel.undo() }, enabled = canUndo && !isPenDown) {
                     Icon(Icons.AutoMirrored.Rounded.Undo, "Undo", modifier = Modifier.size(20.dp))
                 }
-                IconButton(onClick = { viewModel.redo() }, enabled = canRedo) {
+                IconButton(onClick = { viewModel.redo() }, enabled = canRedo && !isPenDown) {
                     Icon(Icons.AutoMirrored.Rounded.Redo, "Redo", modifier = Modifier.size(20.dp))
                 }
             }
