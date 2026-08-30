@@ -144,7 +144,12 @@ class StrokeEngine {
      * finger one-to-one. Also advances the smoothed speed the velocity dynamics read.
      */
     fun smoothMovement(delta: Offset, state: DrawingState): Offset {
-        val sensitivity = if (state.isPenDown) state.cursorSensitivity else 1.0f
+        // Engaged, not down: Draw Sensitivity is about precision work, and steering a path
+        // point is precision work by any measure - it is the one gesture in the app where you
+        // are aiming at something already on the canvas. Smoothing below stays keyed to the
+        // pen, because it shapes a line; on a handle it would only put lag between the finger
+        // and the point it is meant to be placing.
+        val sensitivity = if (state.isPenEngaged) state.cursorSensitivity else 1.0f
         val targetVelocity = delta * sensitivity
 
         val smoothingFactor = if (state.isPenDown) {
