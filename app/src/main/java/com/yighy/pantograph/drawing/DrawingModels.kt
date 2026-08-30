@@ -15,7 +15,21 @@ sealed class DrawingMode {
     object SelectRect : DrawingMode()
     object SelectWand : DrawingMode()
     object SelectColor : DrawingMode()
+
+    /**
+     * Places points instead of painting: the pen adds one at the cursor, the curve through them
+     * is previewed live, and nothing lands on the layer until the path is committed.
+     */
+    object Path : DrawingMode()
 }
+
+/**
+ * One point of a path tool curve.
+ *
+ * @param isCorner true to break the curve here into a kink. The curve is smooth by default,
+ * which is the common case; sharpening a point is the exception you ask for.
+ */
+data class PathPoint(val position: Offset, val isCorner: Boolean = false)
 
 /** True for every tool whose pen gesture manipulates the selection instead of painting. */
 fun DrawingMode.isSelectionTool(): Boolean =
@@ -204,6 +218,17 @@ data class DrawingState(
     val currentPath: DrawingPath? = null,
     
     val cursorPosition: Offset = Offset.Zero,
+    /** The path tool's points, in the order they were placed. Empty unless one is being built. */
+    val pathPoints: List<PathPoint> = emptyList(),
+    /** Index of the path point riding the cursor, or -1. */
+    val grabbedPathPoint: Int = -1,
+    /**
+     * How many points the press in progress created, so abandoning it can take them all back.
+     * Two for the very first press, which lays an anchor and starts the point after it.
+     */
+    val pathPointsFromPress: Int = 0,
+    /** Whether the path runs back into itself, making a loop rather than a line. */
+    val pathClosed: Boolean = false,
     /** Mirrored from preferences; read by [HistoryCoordinator] when an entry carries an anchor. */
     val undoRestoresCursor: Boolean = true,
     /** Mirrored from preferences; decides whether an undone stroke is kept as a trace. */
@@ -259,4 +284,56 @@ data class DrawingState(
      * gets recorded. Handing it over would have every undo delete the traces it just made.
      */
     val drawingLayers: List<LayerEntity> get() = layers.filter { !it.isTrace }
+
+    /**
+     * Whether there is a path on screen waiting to be committed.
+     *
+     * The canvas needs this because a pending path draws through the same stroke buffer a live
+     * stroke does, but without the pen ever going down - so isPenDown alone would leave the
+     * preview invisible.
+     */
+    val hasPendingPath: Boolean get() = drawingMode is DrawingMode.Path && pathPoints.size >= 2
+
+    /**
+     * Whether the button is being held for something, stroke or not.
+     *
+     * The path tool holds the pen without ever putting it down - it is placing a point, not
+     * painting - but everything about how the button *looks and behaves while held* should be
+     * the same either way: it presses in, the satellites get out of the way, and the gates stop
+     * accepting a stray second finger. What stays keyed to isPenDown is the drawing itself.
+     */
+    val isPenEngaged: Boolean get() = isPenDown || grabbedPathPoint >= 0
+
+    /**
+     * Index of the path point the cursor is close enough to pick up, or -1.
+     *
+     * Derived rather than stored: it is a function of where the cursor is, and a copy kept in
+     * the state would be one more thing able to disagree with the cursor's actual position.
+     */
+    val hoveredPathPoint: Int get() =
+        if (drawingMode !is DrawingMode.Path) -1
+        else PathGeometry.nearestIndex(
+            pathPoints, brushPosition, PathGeometry.GRAB_RADIUS / canvasScale.coerceAtLeast(0.01f)
+        )
+
+    /**
+     * True while the end being held is near enough to the other end to join them on release.
+     *
+     * Either end will do: dragging the start onto the finish reads exactly like dragging the
+     * finish onto the start, and refusing one of them would only be a rule to discover.
+     */
+    val pathClosingCandidate: Boolean get() {
+        if (drawingMode !is DrawingMode.Path || pathClosed || pathPoints.size < 3) return false
+        val last = pathPoints.lastIndex
+        if (grabbedPathPoint != 0 && grabbedPathPoint != last) return false
+        val other = if (grabbedPathPoint == 0) pathPoints[last] else pathPoints[0]
+        val reach = PathGeometry.GRAB_RADIUS / canvasScale.coerceAtLeast(0.01f)
+        return (pathPoints[grabbedPathPoint].position - other.position).getDistance() <= reach
+    }
+
+    /** Whether the point under the cursor is sharp, or null when there is none. */
+    val pathPointUnderCursorIsCorner: Boolean? get() {
+        val index = if (grabbedPathPoint >= 0) grabbedPathPoint else hoveredPathPoint
+        return pathPoints.getOrNull(index)?.isCorner
+    }
 }

@@ -70,13 +70,16 @@ fun DrawingToolbar(
     val selectedColor by remember(viewModel) { viewModel.uiState.map { it.selectedColor }.distinctUntilChanged() }.collectAsState(Color.Black)
 
     val isSelectionMode = drawingMode.isSelectionTool()
+    val isPathMode = drawingMode is DrawingMode.Path
     val isSelectionClosed by remember(viewModel) { viewModel.uiState.map { it.isSelectionClosed }.distinctUntilChanged() }.collectAsState(false)
 
     // Entering a selection tool still closes whatever was open, so the selection controls are
     // immediately visible. This one stays state-driven because it only ever *closes* panels -
     // a repeated selection with nothing to change is correctly a no-op.
     LaunchedEffect(drawingMode) {
-        if (drawingMode.isSelectionTool()) onActivePanelChange(ToolbarPanel.None)
+        if (drawingMode.isSelectionTool() || drawingMode is DrawingMode.Path) {
+            onActivePanelChange(ToolbarPanel.None)
+        }
     }
 
     // Height and opacity both ride springs from the same family, so the fade lands with the
@@ -247,6 +250,18 @@ fun DrawingToolbar(
                 GlobalSettingsPanel(viewModel)
             }
 
+            // Path Panel - the tool owns the toolbar while it is armed, the same way the
+            // selection tools do. Its commands are frequent and repeated, so they belong under
+            // the thumb rather than in the readout row across the screen; that row keeps only
+            // the state chip, which is exactly the split the selection tools already use.
+            AnimatedVisibility(
+                visible = isPathMode && activePanel == ToolbarPanel.None,
+                enter = visibilityAnimSpecEnter,
+                exit = visibilityAnimSpecExit
+            ) {
+                PathPanel(viewModel)
+            }
+
             // Selection Panel - shown while a selection tool is active OR a selection is
             // still alive (it clips drawing tools), as long as no other panel is open
             AnimatedVisibility(
@@ -255,6 +270,77 @@ fun DrawingToolbar(
                 exit = visibilityAnimSpecExit
             ) {
                 SelectionPanel(viewModel)
+            }
+        }
+    }
+}
+
+/**
+ * The path tool's own controls, modelled on [SelectionPanel]: an editing session gets the
+ * toolbar for as long as it lasts.
+ */
+@Composable
+fun PathPanel(viewModel: DrawingViewModel) {
+    val points by remember(viewModel) { viewModel.uiState.map { it.pathPoints.size }.distinctUntilChanged() }.collectAsState(0)
+    val closed by remember(viewModel) { viewModel.uiState.map { it.pathClosed }.distinctUntilChanged() }.collectAsState(false)
+    val pointIsCorner by remember(viewModel) { viewModel.uiState.map { it.pathPointUnderCursorIsCorner }.distinctUntilChanged() }.collectAsState(null)
+
+    Column(modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition)) {
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+        if (points < 2) {
+            // The gesture is new to this app, so it is spelled out rather than left to be
+            // discovered by pressing the one button and seeing what happens.
+            Text(
+                "Hold the button to drop a point, steer, then release. Hold an existing point to move it",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                modifier = Modifier.padding(vertical = 4.dp)
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { viewModel.commitPath() },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Icon(Icons.Rounded.Check, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Draw", style = MaterialTheme.typography.labelSmall)
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.cancelPath() },
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Icon(Icons.Rounded.Close, null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("Discard", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Enabled rather than hidden: a control that comes and goes as the cursor
+                    // drifts over a point would be harder to aim at than one that greys out.
+                    OutlinedButton(
+                        onClick = { viewModel.togglePathPointCorner() },
+                        enabled = pointIsCorner != null,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Text(
+                            if (pointIsCorner == true) "Round point" else "Sharp point",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.togglePathClosed() },
+                        enabled = points >= 3,
+                        modifier = Modifier.weight(1f).height(48.dp),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        Text(if (closed) "Open" else "Close", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
             }
         }
     }

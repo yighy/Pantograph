@@ -264,7 +264,9 @@ private fun ActiveStateChip(
     description: String,
     onDismiss: () -> Unit,
     container: Color = MaterialTheme.colorScheme.primaryContainer,
-    content: Color = MaterialTheme.colorScheme.onPrimaryContainer
+    content: Color = MaterialTheme.colorScheme.onPrimaryContainer,
+    /** Null for a chip that performs an action rather than switching something off. */
+    trailing: ImageVector? = Icons.Rounded.Close
 ) {
     Surface(
         shape = RoundedCornerShape(50),
@@ -286,14 +288,13 @@ private fun ActiveStateChip(
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium
             )
-            Spacer(Modifier.width(3.dp))
             // The cross is the affordance: a chip that only named the state would read as a
-            // label, and nobody taps a label.
-            Icon(
-                Icons.Rounded.Close,
-                contentDescription = null,
-                modifier = Modifier.size(13.dp)
-            )
+            // label, and nobody taps a label. An action chip leads with its own glyph instead,
+            // so it does not promise to turn anything off.
+            trailing?.let {
+                Spacer(Modifier.width(3.dp))
+                Icon(it, contentDescription = null, modifier = Modifier.size(13.dp))
+            }
         }
     }
 }
@@ -497,7 +498,7 @@ fun LayersAndActionsSection(
         ) {
             // FlowRow, not Row: the set of pinnable tools is meant to grow, and a plain row
             // has no answer to running out of width - it squeezes, then clips off the left.
-            // Today at most two can be on at once (six of the seven read the single
+            // Today at most two can be on at once (seven of the eight read the single
             // drawingMode, so they exclude each other; only Lazy is independent), but the
             // first tool added with a toggle of its own breaks that quietly.
             //
@@ -647,6 +648,14 @@ private fun ToolsMenuButton(
                         onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Gradient) }
                     ) {
                         viewModel.setDrawingMode(if (drawingMode is DrawingMode.Gradient) DrawingMode.Freehand else DrawingMode.Gradient)
+                        showTools = false
+                    }
+                    ExtraToolItem(
+                        "Path", drawingMode is DrawingMode.Path, Icons.Rounded.Timeline,
+                        isPinned = pinnedTools.contains(PinnableTool.Path),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Path) }
+                    ) {
+                        viewModel.setDrawingMode(if (drawingMode is DrawingMode.Path) DrawingMode.Freehand else DrawingMode.Path)
                         showTools = false
                     }
                 }

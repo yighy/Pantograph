@@ -7,6 +7,7 @@ import androidx.compose.material.icons.rounded.Gradient
 import androidx.compose.material.icons.rounded.HighlightAlt
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Polyline
+import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Cable
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -34,7 +35,15 @@ enum class PinnableTool(
     Lasso("Lasso", Icons.Rounded.Polyline),
     Rect("Rect", Icons.Rounded.HighlightAlt),
     Wand("Wand", Icons.Rounded.AutoFixHigh),
-    ColorSelect("Color", Icons.Rounded.Palette);
+    ColorSelect("Color", Icons.Rounded.Palette),
+
+    /**
+     * The odd one out: arming this opens an editing session rather than just changing what the
+     * pen paints, and it has a toolbar panel of its own to finish or abandon the curve. It
+     * qualifies anyway - the satellite tap arms and disarms it like any other mode, and
+     * disarming throws the pending curve away, which is what leaving a tool should do.
+     */
+    Path("Path", Icons.Rounded.Timeline);
 
     fun isActive(state: DrawingState): Boolean = when (this) {
         Fill -> state.drawingMode is DrawingMode.BucketFill
@@ -44,6 +53,7 @@ enum class PinnableTool(
         Rect -> state.drawingMode is DrawingMode.SelectRect
         Wand -> state.drawingMode is DrawingMode.SelectWand
         ColorSelect -> state.drawingMode is DrawingMode.SelectColor
+        Path -> state.drawingMode is DrawingMode.Path
     }
 
     /**
@@ -65,6 +75,7 @@ enum class PinnableTool(
             Rect -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectRect)
             Wand -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectWand)
             ColorSelect -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectColor)
+            Path -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.Path)
         }
     }
 

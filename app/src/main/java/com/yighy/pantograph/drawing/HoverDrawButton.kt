@@ -83,6 +83,8 @@ fun HoverDrawButton(
     val satelliteGateSensitivity by remember(viewModel) { viewModel.uiState.map { it.satelliteGateSensitivity }.distinctUntilChanged() }.collectAsState(1f)
     val isEyeDropperMode by remember(viewModel) { viewModel.uiState.map { it.isEyeDropperMode }.distinctUntilChanged() }.collectAsState(false)
     val isPenDown by remember(viewModel) { viewModel.uiState.map { it.isPenDown }.distinctUntilChanged() }.collectAsState(false)
+    // Held, whether or not that means painting - see DrawingState.isPenEngaged.
+    val isPenEngaged by remember(viewModel) { viewModel.uiState.map { it.isPenEngaged }.distinctUntilChanged() }.collectAsState(false)
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
 
     // Live values for all four brush-gate params, so the bubble row can show every level
@@ -99,7 +101,7 @@ fun HoverDrawButton(
     // than guessed, so the two can't drift apart.
     val fabPressScale = 1.15f
     val scale by animateFloatAsState(
-        targetValue = if (isPenDown) fabPressScale else 1f,
+        targetValue = if (isPenEngaged) fabPressScale else 1f,
         animationSpec = MotionTokens.pulse
     )
 
@@ -170,7 +172,13 @@ fun HoverDrawButton(
                                         viewModel.setPenDown(false)
                                         // Only abort stroke if we were actually drawing (not picking color or selecting)
                                         val isSelectionMode = drawingMode.isSelectionTool()
-                                        if (!isEyeDropperMode && !isSelectionMode) {
+                                        if (drawingMode is DrawingMode.Path) {
+                                            // The path tool pushes no history entry until the
+                                            // curve is committed, so aborting a stroke here
+                                            // would pop somebody else's. It has its own way of
+                                            // taking back the point this press just placed.
+                                            viewModel.abortPathPress()
+                                        } else if (!isEyeDropperMode && !isSelectionMode) {
                                             viewModel.abortCurrentStroke()
                                         }
                                     } else {
@@ -214,19 +222,28 @@ fun HoverDrawButton(
                     Triple(Icons.Rounded.AutoFixHigh, "Magic wand active", MaterialTheme.colorScheme.primaryContainer)
                 drawingMode is DrawingMode.SelectColor ->
                     Triple(Icons.Rounded.Palette, "Colour select active", MaterialTheme.colorScheme.primaryContainer)
+                drawingMode is DrawingMode.Path ->
+                    Triple(Icons.Rounded.Timeline, "Path tool active", MaterialTheme.colorScheme.primaryContainer)
                 else -> null
             }
             // Pressed always reads the same whatever tool is armed, so the identity lives in
             // the glyph and the "a stroke is happening" signal stays in the colour.
             val container = when {
-                isPenDown -> MaterialTheme.colorScheme.errorContainer
+                isPenEngaged -> MaterialTheme.colorScheme.errorContainer
                 armed != null -> armed.third
                 else -> MaterialTheme.colorScheme.tertiaryContainer
             }
             val fabIcon = armed?.first
                 ?: if (isPenDown) Icons.Default.Edit else Icons.Default.TouchApp
-            val fabDescription = armed?.second
-                ?: if (isPenDown) "Drawing" else "Hold to draw"
+            // The path tool is held to place rather than held to draw, so it says so: "Drawing"
+            // would be describing a stroke that is not happening.
+            val fabDescription = when {
+                drawingMode is DrawingMode.Path ->
+                    if (isPenEngaged) "Placing a path point" else "Hold to place a path point"
+                armed != null -> armed.second
+                isPenDown -> "Drawing"
+                else -> "Hold to draw"
+            }
 
             FloatingActionButton(
                 onClick = { },
@@ -303,7 +320,7 @@ fun HoverDrawButton(
         // reattaches while a finger is already down is asking for trouble. The nodes stay put
         // for the whole session; they simply refuse the gesture while hidden, so there is no
         // invisible target either.
-        val satellitesVisible = !isPenDown
+        val satellitesVisible = !isPenEngaged
         val satelliteAlpha by animateFloatAsState(
             targetValue = if (satellitesVisible) 1f else 0f,
             animationSpec = if (satellitesVisible) MotionTokens.expressiveEnter else MotionTokens.expressiveExit,
@@ -379,7 +396,7 @@ fun HoverDrawButton(
                         // Read live rather than through a captured value: this block is not
                         // rebuilt when the FAB is pressed. Hidden means inert - bail out
                         // without consuming, so the touch is nobody's business.
-                        if (viewModel.uiState.value.isPenDown) return@awaitEachGesture
+                        if (viewModel.uiState.value.isPenEngaged) return@awaitEachGesture
                         down.consume()
                         val params = BrushGateParam.values()
                         val colStepPx = 56.dp.toPx()
@@ -591,7 +608,7 @@ fun HoverDrawButton(
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
-                        if (viewModel.uiState.value.isPenDown) return@awaitEachGesture
+                        if (viewModel.uiState.value.isPenEngaged) return@awaitEachGesture
                         down.consume()
                         val deadZonePx = 18.dp.toPx()
                         val trailPx = GateMath.ANCHOR_TRAIL_RADIUS_DP.dp.toPx()
@@ -780,7 +797,7 @@ fun HoverDrawButton(
                 .pointerInput(satelliteGateSensitivity) {
                     awaitEachGesture {
                         val down = awaitFirstDown()
-                        if (viewModel.uiState.value.isPenDown) return@awaitEachGesture
+                        if (viewModel.uiState.value.isPenEngaged) return@awaitEachGesture
                         down.consume()
                         val params = ColourGateParam.entries
                         val colStepPx = 56.dp.toPx()
@@ -984,7 +1001,7 @@ fun HoverDrawButton(
                     awaitEachGesture {
                         val down = awaitFirstDown()
                         val tools = viewModel.uiState.value.pinnedTools
-                        if (viewModel.uiState.value.isPenDown || tools.isEmpty()) {
+                        if (viewModel.uiState.value.isPenEngaged || tools.isEmpty()) {
                             return@awaitEachGesture
                         }
                         down.consume()

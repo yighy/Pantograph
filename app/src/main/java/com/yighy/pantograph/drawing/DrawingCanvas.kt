@@ -242,6 +242,9 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
     val strokeBitmap by remember(viewModel) { viewModel.uiState.map { it.strokeBitmap }.distinctUntilChanged() }.collectAsState(null)
     val activeLayerId by remember(viewModel) { viewModel.uiState.map { it.activeLayerId }.distinctUntilChanged() }.collectAsState(-1L)
     val isPenDown by remember(viewModel) { viewModel.uiState.map { it.isPenDown }.distinctUntilChanged() }.collectAsState(false)
+    // A pending path draws through the same buffer a live stroke does, but with the pen up -
+    // so isPenDown alone would leave its preview invisible.
+    val hasPendingPath by remember(viewModel) { viewModel.uiState.map { it.hasPendingPath }.distinctUntilChanged() }.collectAsState(false)
     val brushOpacity by remember(viewModel) { viewModel.uiState.map { it.brushOpacity }.distinctUntilChanged() }.collectAsState(1f)
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val brushTextureMask by remember(viewModel) { viewModel.uiState.map { it.brushTextureMask }.distinctUntilChanged() }.collectAsState(null)
@@ -285,7 +288,7 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                 // conditions below to smart-cast sb for the draws, and Kotlin cannot carry a
                 // cast through a Boolean val - so having it in both places left the compiler
                 // reporting the second one as always true.
-                val liveStroke = isActiveLayer && isPenDown && !isEraser && !isSelection
+                val liveStroke = isActiveLayer && (isPenDown || hasPendingPath) && !isEraser && !isSelection
 
                 if (sb != null && liveStroke &&
                     layer.opacity >= 1f && brushOpacity >= 1f &&
@@ -337,11 +340,97 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
     }
 }
 
+/**
+ * Overlays that are not made of paint. Straight-line and path *strokes* still preview through
+ * the stroke buffer in [CanvasLayer], which is what keeps custom tips, textures and jitter
+ * honest; what lives here is the scaffolding you steer by and that never lands on the layer.
+ */
 @Composable
 fun ToolPreviewLayer(viewModel: DrawingViewModel) {
-    // Currently, straight line preview is handled via strokeBitmap in CanvasLayer 
-    // for better accuracy (matching custom tips, textures, jitter, etc).
-    // This layer can be used for other non-stroke overlays if needed.
+    val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
+    if (drawingMode !is DrawingMode.Path) return
+
+    val points by remember(viewModel) { viewModel.uiState.map { it.pathPoints }.distinctUntilChanged() }.collectAsState(emptyList())
+    val grabbed by remember(viewModel) { viewModel.uiState.map { it.grabbedPathPoint }.distinctUntilChanged() }.collectAsState(-1)
+    val hovered by remember(viewModel) { viewModel.uiState.map { it.hoveredPathPoint }.distinctUntilChanged() }.collectAsState(-1)
+    val canvasScale by remember(viewModel) { viewModel.uiState.map { it.canvasScale }.distinctUntilChanged() }.collectAsState(1f)
+    val pathClosed by remember(viewModel) { viewModel.uiState.map { it.pathClosed }.distinctUntilChanged() }.collectAsState(false)
+    val closing by remember(viewModel) { viewModel.uiState.map { it.pathClosingCandidate }.distinctUntilChanged() }.collectAsState(false)
+
+    val accent = MaterialTheme.colorScheme.primary
+    val onAccent = MaterialTheme.colorScheme.onPrimary
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        if (points.isEmpty()) return@Canvas
+        // Everything here is drawn in canvas units inside a box the viewport scales, so each
+        // on-screen size is divided back out. Handles that grew with the zoom would bury the
+        // drawing at the magnification where you most need to see it.
+        val scale = canvasScale.coerceAtLeast(0.01f)
+        val handle = 5.dp.toPx() / scale
+        val hairline = 1.dp.toPx() / scale
+
+        // The control polygon, faint: it says which point joins which, which the curve itself
+        // stops making obvious as soon as it bends much.
+        for (i in 0 until points.size - 1) {
+            drawLine(
+                color = accent.copy(alpha = 0.35f),
+                start = points[i].position,
+                end = points[i + 1].position,
+                strokeWidth = hairline
+            )
+        }
+        // The span that only exists on a loop, and the same span drawn brighter while the two
+        // ends are close enough to be joined on release. Closing without warning would be a
+        // surprise; this is the warning.
+        if ((pathClosed || closing) && points.size >= 3) {
+            drawLine(
+                color = accent.copy(alpha = if (closing) 0.9f else 0.35f),
+                start = points.last().position,
+                end = points.first().position,
+                strokeWidth = if (closing) hairline * 2f else hairline
+            )
+        }
+
+        points.forEachIndexed { i, point ->
+            val isGrabbed = i == grabbed
+            val isHovered = i == hovered && grabbed < 0
+            // The end about to be joined lights up like a hover, so the target of the snap is
+            // named rather than left to be inferred from the line.
+            val isSnapTarget = closing && i == (if (grabbed == 0) points.lastIndex else 0)
+            val radius = if (isGrabbed || isHovered || isSnapTarget) handle * 1.45f else handle
+
+            // A handle sits on top of the drawing it is shaping, so the body is a wash rather
+            // than a plug: enough to read the shape against any artwork, little enough to
+            // judge what is underneath it. The ring carries the contrast instead, and being a
+            // hairline it hides almost nothing. The held one is allowed to be more solid -
+            // there is only ever one, and knowing which is worth the pixels it covers.
+            val fill = when {
+                isGrabbed -> accent.copy(alpha = 0.5f)
+                isHovered || isSnapTarget -> onAccent.copy(alpha = 0.3f)
+                else -> onAccent.copy(alpha = 0.18f)
+            }
+            val ring = accent.copy(alpha = if (isGrabbed || isHovered || isSnapTarget) 1f else 0.75f)
+
+            // Square for a corner, round for a smooth point: the shape says what the curve
+            // will do here without a legend, and survives being the only thing on screen at a
+            // glance mid-drag.
+            if (point.isCorner) {
+                val side = radius * 1.8f
+                val corner = Offset(point.position.x - side / 2f, point.position.y - side / 2f)
+                val box = androidx.compose.ui.geometry.Size(side, side)
+                drawRect(color = fill, topLeft = corner, size = box)
+                drawRect(color = ring, topLeft = corner, size = box, style = Stroke(width = hairline * 2f))
+            } else {
+                drawCircle(color = fill, radius = radius, center = point.position)
+                drawCircle(
+                    color = ring,
+                    radius = radius,
+                    center = point.position,
+                    style = Stroke(width = hairline * 2f)
+                )
+            }
+        }
+    }
 }
 
 @Composable

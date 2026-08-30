@@ -205,6 +205,24 @@ class StrokeEngine {
     }
 
     /**
+     * Repaints the buffer with a whole polyline, stamped end to end as one continuous stroke.
+     *
+     * Spacing is reset once and then left to accumulate across the joins, so the stamps carry
+     * on through a corner instead of restarting at every vertex and clumping there. The seed is
+     * derived from the segment index rather than fixed: fixed would give every segment the same
+     * jitter and read as a repeat, while anything random would re-roll between the preview and
+     * the commit and land a different stroke than the one shown.
+     */
+    fun drawPolyline(points: List<Offset>, state: DrawingState) {
+        if (points.size < 2) return
+        clearTarget()
+        resetSpacing(state)
+        for (i in 0 until points.size - 1) {
+            drawSegment(points[i], points[i + 1], state, seed = i.toLong())
+        }
+    }
+
+    /**
      * Repaints the buffer with the live gradient preview: [state]'s colour at [from] fading to
      * transparent at [to]. Clipping and opacity are applied at commit like any other stroke.
      */
