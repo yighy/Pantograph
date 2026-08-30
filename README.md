@@ -53,6 +53,7 @@ as you cross a threshold.
 
 **Tools**
 - Freehand, straight line, eraser, bucket fill, linear gradient.
+- Path: place points and bend the curve running through them. Hold the button to steer a point before it settles, sharpen one to turn a corner, or join the two ends into a loop.
 - Lazy/rope mode for extra-smooth curves.
 - Selection: lasso, rectangle, magic wand, colour select — move, transform, duplicate, invert.
 - A lifted selection survives a layer change, so it can be pasted into another layer.
@@ -60,7 +61,9 @@ as you cross a threshold.
 
 **Canvas & workflow**
 - Layers: reorder by drag & drop, opacity, visibility, duplicate, merge down, rename.
+- Lock a layer to protect its pixels: the pen, clearing, merging and deleting are refused, while hiding, renaming and reordering carry on.
 - Full undo/redo history.
+- Optionally, undo walks the cursor back to where the undone stroke started, and keeps the stroke itself on a faint Traces layer to redraw over.
 - Import an image as a new layer, positioned before it is applied.
 - Floating reference image window — movable, resizable, colour-pickable.
 - Eyedropper, colour history, HSB picker.
