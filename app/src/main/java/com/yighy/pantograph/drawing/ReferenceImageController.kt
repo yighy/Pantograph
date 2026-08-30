@@ -38,7 +38,7 @@ class ReferenceImageController(
                         bitmap = decoded.bitmap
                     )
                 ) }
-                persistence.saveBrushSettings()
+                persistence.saveProjectSettings()
             } catch (e: Exception) {
                 android.util.Log.e("ReferenceImageController", "Failed to load reference image", e)
                 session.update { it.copy(referenceImage = ReferenceImage(uri = uri, offset = Offset(100f, 100f), bitmap = null)) }
@@ -69,7 +69,7 @@ class ReferenceImageController(
 
     fun remove() {
         session.update { it.copy(referenceImage = null) }
-        scope.launch { persistence.saveBrushSettings() }
+        scope.launch { persistence.saveProjectSettings() }
     }
 
     fun update(pan: Offset, zoom: Float, rotation: Float) {
@@ -82,7 +82,7 @@ class ReferenceImageController(
             ))
         }
         // Save debounced or on specific interval might be better, but let's do it simple for now
-        scope.launch { persistence.saveBrushSettings() }
+        scope.launch { persistence.saveProjectSettings() }
     }
 }
 

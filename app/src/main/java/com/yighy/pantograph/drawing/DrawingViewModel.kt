@@ -64,6 +64,17 @@ class DrawingViewModel(
      */
     private var strokeStartAnchor: CursorAnchor? = null
 
+    /**
+     * Whether the press in progress has put anything on the undo stack yet.
+     *
+     * [abortCurrentStroke] used to pop regardless, on the assumption that every press ends by
+     * pushing something - true when the only way to refuse the pen was to be in a mode that
+     * the button already knew not to abort. A locked layer refuses it too, and then the pop
+     * took back whatever happened to be on top instead: locking a layer and then moving the
+     * button quietly unlocked it again.
+     */
+    private var pressPushedEntry = false
+
     private val engine = StrokeEngine()
     private val persistence = ProjectPersistence(session, repository, projectId, internalFilesDir, viewModelScope, persistScope)
     private val history = HistoryCoordinator(
@@ -100,35 +111,19 @@ class DrawingViewModel(
                 session.update { it.copy(isLoading = false) }
                 return@launch
             }
+            // The brush itself is not read from here any more - it is global, and the
+            // mirrors in observeSettings put it in hand. Only what genuinely belongs to this
+            // project is restored: its size, the colour it was left on, and the cursor feel.
             session.update {
                 it.copy(
                     projectId = projectId,
                     projectName = project.name,
                     canvasWidth = project.width,
                     canvasHeight = project.height,
-                    selectedWidth = project.lastBrushSize,
-                    brushSoftness = project.lastBrushSoftness,
-                    brushOpacity = project.lastBrushOpacity,
-                    brushFlow = project.lastBrushFlow,
-                    brushSpacing = project.lastBrushSpacing,
-                    brushSmoothing = project.lastBrushSmoothing,
                     selectedColor = Color(project.lastBrushColor),
-                    brushRotation = project.lastBrushRotation,
-                    brushRotationJitter = project.lastBrushRotationJitter,
-                    sizeJitter = project.lastSizeJitter,
-                    scatterJitter = project.lastScatterJitter,
-                    flowJitter = project.lastFlowJitter,
-                    rotationFollow = project.lastRotationFollow,
-                    brushTipUri = project.lastBrushTipUri,
-                    brushTextureUri = project.lastBrushTextureUri,
-                    sizeMultiplier = project.lastSizeMultiplier,
                     cursorSensitivity = project.lastCursorSensitivity
                 )
             }
-
-            // Load saved project brush bitmaps if they exist
-            project.lastBrushTipUri?.let { setBrushTip(context, it) }
-            project.lastBrushTextureUri?.let { setBrushTexture(context, it) }
 
             // Load saved reference image
             project.referenceImageUri?.let { uri ->
@@ -253,6 +248,17 @@ class DrawingViewModel(
         // than spelled out here, because BrushPresetController has to write the same set back
         // when a preset is loaded - see MirroredBrushSetting for what a mismatch costs.
         MirroredBrushSetting.observeAll(preferenceManager, session, viewModelScope)
+
+        // The tip and the texture belong to the brush like the rest, but they cannot go through
+        // MirroredBrushSetting: that walks pure state, and these have to be decoded before they
+        // mean anything. Same mirror, done by hand.
+        preferenceManager.brushTipUri
+            .onEach { uri -> brushAssets.setBrushTip(context, uri) }
+            .launchIn(viewModelScope)
+
+        preferenceManager.brushTextureUri
+            .onEach { uri -> brushAssets.setBrushTexture(context, uri) }
+            .launchIn(viewModelScope)
 
         preferenceManager.offscreenCursorArrow
             .onEach { enabled -> session.update { it.copy(showOffscreenCursorArrow = enabled) } }
@@ -380,6 +386,8 @@ class DrawingViewModel(
 
     fun setPenDown(down: Boolean) {
         val state = session.value
+        // Per press, and before the guards below, several of which return without pushing.
+        if (down) pressPushedEntry = false
 
         // Priority to Eye Dropper
         if (down && state.isEyeDropperMode) {
@@ -410,6 +418,7 @@ class DrawingViewModel(
             if (down) {
                 // Flood fill mutates scattered pixels, so the whole layer is frozen
                 history.save(mapOf(state.activeLayerId to SnapshotSpec.FullMutated))
+                pressPushedEntry = true
                 updateColorHistory(state.selectedColor)
                 performFloodFill(state.brushPosition, state.selectedColor.copy(alpha = state.brushOpacity))
             }
@@ -464,6 +473,7 @@ class DrawingViewModel(
             // mutated so it freezes the pre-stroke pixels of just the stroke's bounding box.
             // Pushed even for an empty stroke: abortCurrentStroke() pops unconditionally.
             history.save(strokeSnapshotSpec(session.value), strokeStartAnchor)
+            pressPushedEntry = true
             strokeStartAnchor = null
             commitStrokeToLayer()
             // After the composite, not before: that is where the texture mask and the selection
@@ -641,7 +651,11 @@ class DrawingViewModel(
      * Specialized method for the FAB drag-to-move feature.
      * Silently removes the last history state and restores bitmaps.
      */
-    fun abortCurrentStroke() = history.abortLastEntry()
+    fun abortCurrentStroke() {
+        if (!pressPushedEntry) return
+        pressPushedEntry = false
+        history.abortLastEntry()
+    }
 
     /**
      * Both refuse to run mid-stroke.
@@ -877,7 +891,7 @@ class DrawingViewModel(
         // a half-drawn path has no meaning on a different layer.
         selection.dropUnfinishedTrace()
         session.update { it.copy(activeLayerId = id) }
-        viewModelScope.launch { persistence.saveBrushSettings() }
+        viewModelScope.launch { persistence.saveProjectSettings() }
     }
 
     // ============================ Canvas viewport ============================
@@ -987,40 +1001,47 @@ class DrawingViewModel(
      * setting. [persistPreference] is used by the handful of settings that are also saved as a
      * global default (via [preferenceManager]) rather than just per-project.
      */
-    private fun updateBrushSetting(persistPreference: (suspend () -> Unit)? = null, update: (DrawingState) -> DrawingState) {
+    /**
+     * Applies a setting that genuinely belongs to this project, and schedules its row.
+     *
+     * Only the colour and the cursor feel are left in this category. Every brush property is a
+     * global now and goes through [updatePreference] instead - routing one through here used to
+     * mean that nudging the spacing wrote the colour back to the database.
+     */
+    private fun updateProjectSetting(update: (DrawingState) -> DrawingState) {
         session.update(update)
-        if (persistPreference != null) viewModelScope.launch { persistPreference() }
         // Throttled: these arrive one per pointer event while a satellite gate is being swept,
         // and each unthrottled save was a project read plus a project write.
-        persistence.scheduleBrushSettingsSave()
+        persistence.scheduleProjectSettingsSave()
     }
 
-    /** Applies a brush setting that is stored as a global default rather than per project. */
+    /** Applies a brush setting, which is stored as a global default rather than per project. */
     private fun updatePreference(persist: suspend () -> Unit, update: (DrawingState) -> DrawingState) {
         session.update(update)
         viewModelScope.launch { persist() }
     }
 
-    fun selectColor(color: Color) = updateBrushSetting { it.copy(selectedColor = color, isEyeDropperMode = false) }
+    fun selectColor(color: Color) = updateProjectSetting { it.copy(selectedColor = color, isEyeDropperMode = false) }
 
-    fun selectWidth(width: Float) = updateBrushSetting { it.copy(selectedWidth = width) }
+    fun selectWidth(width: Float) = updatePreference({ preferenceManager.setBrushSize(width) }) { it.copy(selectedWidth = width) }
 
-    fun setBrushSoftness(softness: Float) = updateBrushSetting({ preferenceManager.setBrushSoftness(softness) }) { it.copy(brushSoftness = softness) }
+    fun setBrushSoftness(softness: Float) = updatePreference({ preferenceManager.setBrushSoftness(softness) }) { it.copy(brushSoftness = softness) }
 
-    fun setBrushSmoothing(smoothing: Float) = updateBrushSetting({ preferenceManager.setBrushSmoothing(smoothing) }) { it.copy(brushSmoothing = smoothing) }
+    fun setBrushSmoothing(smoothing: Float) = updatePreference({ preferenceManager.setBrushSmoothing(smoothing) }) { it.copy(brushSmoothing = smoothing) }
 
-    fun setBrushOpacity(opacity: Float) = updateBrushSetting { it.copy(brushOpacity = opacity) }
-    fun setBrushFlow(flow: Float) = updateBrushSetting { it.copy(brushFlow = flow) }
-    fun setBrushSpacing(spacing: Float) = updateBrushSetting { it.copy(brushSpacing = spacing) }
-    fun setBrushRotation(rotation: Float) = updateBrushSetting { it.copy(brushRotation = rotation) }
+    fun setBrushOpacity(opacity: Float) = updatePreference({ preferenceManager.setBrushOpacity(opacity) }) { it.copy(brushOpacity = opacity) }
+    fun setBrushFlow(flow: Float) = updatePreference({ preferenceManager.setBrushFlow(flow) }) { it.copy(brushFlow = flow) }
+    fun setBrushSpacing(spacing: Float) = updatePreference({ preferenceManager.setBrushSpacing(spacing) }) { it.copy(brushSpacing = spacing) }
+    fun setBrushRotation(rotation: Float) = updatePreference({ preferenceManager.setBrushRotation(rotation) }) { it.copy(brushRotation = rotation) }
 
-    fun setRotationJitter(jitter: Float) = updateBrushSetting({ preferenceManager.setRotationJitter(jitter) }) { it.copy(brushRotationJitter = jitter) }
+    fun setRotationJitter(jitter: Float) = updatePreference({ preferenceManager.setRotationJitter(jitter) }) { it.copy(brushRotationJitter = jitter) }
 
-    fun setSizeJitter(jitter: Float) = updateBrushSetting { it.copy(sizeJitter = jitter) }
+    fun setSizeJitter(jitter: Float) = updatePreference({ preferenceManager.setSizeJitter(jitter) }) { it.copy(sizeJitter = jitter) }
 
     /** Scales the brush size past the slider's ceiling. 1x paints at the size as set. */
-    fun setSizeMultiplier(multiplier: Float) = updateBrushSetting {
-        it.copy(sizeMultiplier = multiplier.coerceIn(0f, SizeMultiplierScale.MAX))
+    fun setSizeMultiplier(multiplier: Float) {
+        val clamped = multiplier.coerceIn(0f, SizeMultiplierScale.MAX)
+        updatePreference({ preferenceManager.setSizeMultiplier(clamped) }) { it.copy(sizeMultiplier = clamped) }
     }
 
     fun setFlowJitter(amount: Float) = updatePreference({ preferenceManager.setFlowJitter(amount) }) { it.copy(flowJitter = amount) }
@@ -1037,7 +1058,7 @@ class DrawingViewModel(
 
     fun setVelocityEnabled(enabled: Boolean) = updatePreference({ preferenceManager.setVelocityEnabled(enabled) }) { it.copy(velocityEnabled = enabled) }
 
-    fun setCursorSensitivity(s: Float) = updateBrushSetting { it.copy(cursorSensitivity = s.coerceIn(0.1f, 1.0f)) }
+    fun setCursorSensitivity(s: Float) = updateProjectSetting { it.copy(cursorSensitivity = s.coerceIn(0.1f, 1.0f)) }
 
     fun setFillTolerance(tolerance: Float) {
         viewModelScope.launch { preferenceManager.setFillTolerance(tolerance) }
@@ -1065,9 +1086,14 @@ class DrawingViewModel(
         session.update { it.copy(lazyRadius = radius) }
     }
 
-    fun setBrushTip(context: android.content.Context, uri: String?) = brushAssets.setBrushTip(context, uri)
+    // Writing the preference is enough: the observers above decode it and put it in hand.
+    fun setBrushTip(context: android.content.Context, uri: String?) {
+        viewModelScope.launch { preferenceManager.setBrushTipUri(uri) }
+    }
 
-    fun setBrushTexture(context: android.content.Context, uri: String?) = brushAssets.setBrushTexture(context, uri)
+    fun setBrushTexture(context: android.content.Context, uri: String?) {
+        viewModelScope.launch { preferenceManager.setBrushTextureUri(uri) }
+    }
 
     // ============================ Brush presets ============================
 
@@ -1091,7 +1117,7 @@ class DrawingViewModel(
 
     // ============================ Saving & export ============================
 
-    suspend fun saveProjectBrushSettings() = persistence.saveBrushSettings()
+    suspend fun saveProjectBrushSettings() = persistence.saveProjectSettings()
 
     fun flushPendingSaves() = persistence.flushNow()
 

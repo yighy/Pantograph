@@ -43,8 +43,8 @@ class ProjectPersistence(
     @Volatile private var projectMetaDirty = false
     private var projectMetaJob: Job? = null
 
-    @Volatile private var brushSettingsDirty = false
-    private var brushSettingsJob: Job? = null
+    @Volatile private var projectSettingsDirty = false
+    private var projectSettingsJob: Job? = null
 
     // ============================ Layer pixels ============================
 
@@ -119,14 +119,14 @@ class ProjectPersistence(
     fun flushNow() {
         val throttledSaves = layerSaveJob
         val throttledMeta = projectMetaJob
-        val throttledBrush = brushSettingsJob
+        val throttledBrush = projectSettingsJob
         persistScope.launch {
             throttledSaves?.cancelAndJoin()
             throttledMeta?.cancelAndJoin()
             throttledBrush?.cancelAndJoin()
             flushPendingLayerSaves()
             flushProjectMeta()
-            flushBrushSettings()
+            flushProjectSettings()
         }
     }
 
@@ -184,7 +184,7 @@ class ProjectPersistence(
         if (!projectMetaDirty) return
         projectMetaDirty = false
         repository.updateProjectTimestamp(projectId)
-        saveBrushSettings()
+        saveProjectSettings()
     }
 
     /**
@@ -197,48 +197,36 @@ class ProjectPersistence(
      * updatedAt: adjusting a brush would then reorder the home grid as though the drawing had
      * been worked on.
      */
-    fun scheduleBrushSettingsSave() {
-        brushSettingsDirty = true
-        if (brushSettingsJob?.isActive != true) {
-            brushSettingsJob = scope.launch {
-                while (brushSettingsDirty) {
+    fun scheduleProjectSettingsSave() {
+        projectSettingsDirty = true
+        if (projectSettingsJob?.isActive != true) {
+            projectSettingsJob = scope.launch {
+                while (projectSettingsDirty) {
                     delay(1000)
-                    flushBrushSettings()
+                    flushProjectSettings()
                 }
             }
         }
     }
 
-    private suspend fun flushBrushSettings() {
-        if (!brushSettingsDirty) return
-        brushSettingsDirty = false
-        saveBrushSettings()
+    private suspend fun flushProjectSettings() {
+        if (!projectSettingsDirty) return
+        projectSettingsDirty = false
+        saveProjectSettings()
     }
 
     /** Persists the brush in hand and the reference image as the project's last-used settings. */
-    suspend fun saveBrushSettings() {
+    suspend fun saveProjectSettings() {
         val state = session.value
         val project = repository.getProjectById(projectId) ?: return
         val ref = state.referenceImage
+        // The brush's own properties are global now, and are neither written here nor read
+        // back on load. Their columns are still on the table but nothing touches them; they go
+        // at the next schema change rather than costing a rebuilt database on their own.
         repository.updateProject(project.copy(
             lastCursorSensitivity = state.cursorSensitivity,
             lastActiveLayerId = state.activeLayerId,
-            lastBrushSize = state.selectedWidth,
-            lastBrushSoftness = state.brushSoftness,
-            lastBrushOpacity = state.brushOpacity,
-            lastBrushFlow = state.brushFlow,
-            lastBrushSpacing = state.brushSpacing,
-            lastBrushSmoothing = state.brushSmoothing,
             lastBrushColor = state.selectedColor.toArgb(),
-            lastBrushRotation = state.brushRotation,
-            lastBrushRotationJitter = state.brushRotationJitter,
-            lastSizeJitter = state.sizeJitter,
-            lastScatterJitter = state.scatterJitter,
-            lastFlowJitter = state.flowJitter,
-            lastRotationFollow = state.rotationFollow,
-            lastBrushTipUri = state.brushTipUri,
-            lastBrushTextureUri = state.brushTextureUri,
-            lastSizeMultiplier = state.sizeMultiplier,
 
             referenceImageUri = ref?.uri,
             referenceImageOffsetX = ref?.offset?.x ?: 0f,

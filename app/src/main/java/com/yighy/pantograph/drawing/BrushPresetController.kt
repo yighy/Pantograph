@@ -133,7 +133,7 @@ class BrushPresetController(
 
         scope.launch {
             MirroredBrushSetting.pushAll(preferenceManager, brush)
-            persistence.saveBrushSettings()
+            persistence.saveProjectSettings()
         }
     }
 

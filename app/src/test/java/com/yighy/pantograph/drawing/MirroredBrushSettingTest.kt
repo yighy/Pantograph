@@ -14,7 +14,10 @@ class MirroredBrushSettingTest {
 
     /** A preset whose every mirrored value differs from the state defaults. */
     private val preset = BrushConfig(
-        id = "1", name = "Loaded", size = 24f, flow = 1f,
+        id = "1", name = "Loaded",
+        size = 24f, softness = 0.3f, opacity = 0.7f, flow = 0.55f,
+        spacing = 0.25f, smoothing = 0.8f, rotation = 45f,
+        sizeJitter = 0.35f, sizeMultiplier = 2.5f,
         rotationJitter = 33f,
         scatterJitter = 0.42f,
         flowJitter = 0.17f,
@@ -81,14 +84,21 @@ class MirroredBrushSettingTest {
     }
 
     @Test
-    fun `the list covers every velocity and jitter parameter a preset carries`() {
-        // The bug this replaced: scatter, flow jitter and follow-direction were mirrored in but
-        // never written back, so they were restored from another preset's global.
-        val expected = setOf(
-            "brushRotationJitter", "scatterJitter", "flowJitter", "rotationFollow",
-            "velocityEnabled", "velocitySizeAmount", "velocityFlowAmount", "velocityScatterAmount"
+    fun `the list covers every property a preset carries`() {
+        // Derived from BrushConfig rather than listed out, so a property added to a preset
+        // cannot quietly stay per-project - which is the split this list exists to abolish.
+        // Excluded: the preset's own identity, and the two assets, which are mirrored by hand
+        // in the ViewModel because they have to be decoded before they mean anything.
+        val notMirrored = setOf("id", "name", "folderId", "tipUri", "textureUri")
+        val carried = BrushConfig::class.java.declaredFields
+            .filterNot { it.name.startsWith("$") }
+            .map { it.name }
+            .filterNot { it in notMirrored }
+        assertEquals(
+            "a preset carries $carried, the mirror covers ${MirroredBrushSetting.ALL.map { it.label }}",
+            carried.size,
+            MirroredBrushSetting.ALL.size
         )
-        assertEquals(expected, MirroredBrushSetting.ALL.map { it.stateField }.toSet())
     }
 
     /** Reads this setting off [preset] and applies it, with the generics tied back together. */

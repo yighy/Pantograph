@@ -42,6 +42,15 @@ class PreferenceManager(private val context: Context) {
         val FLOW_JITTER_KEY = floatPreferencesKey("flow_jitter")
         val ROTATION_FOLLOW_KEY = floatPreferencesKey("rotation_follow")
         val UNDO_RESTORES_CURSOR_KEY = booleanPreferencesKey("undo_restores_cursor")
+        val BRUSH_SIZE_KEY = floatPreferencesKey("brush_size")
+        val BRUSH_OPACITY_KEY = floatPreferencesKey("brush_opacity")
+        val BRUSH_FLOW_KEY = floatPreferencesKey("brush_flow")
+        val BRUSH_SPACING_KEY = floatPreferencesKey("brush_spacing")
+        val BRUSH_ROTATION_KEY = floatPreferencesKey("brush_rotation")
+        val SIZE_JITTER_KEY = floatPreferencesKey("size_jitter")
+        val SIZE_MULTIPLIER_KEY = floatPreferencesKey("size_multiplier")
+        val BRUSH_TIP_URI_KEY = stringPreferencesKey("brush_tip_uri")
+        val BRUSH_TEXTURE_URI_KEY = stringPreferencesKey("brush_texture_uri")
         val KEEP_UNDONE_STROKES_KEY = booleanPreferencesKey("keep_undone_strokes")
     }
 
@@ -87,6 +96,38 @@ class PreferenceManager(private val context: Context) {
     val brushSmoothing: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[BRUSH_SMOOTHING_KEY]?.toFloatOrNull() ?: 0.5f
     }.distinctUntilChanged()
+
+    // The rest of the brush. These follow you between projects for the same reason the jitters
+    // always did: they describe the brush in hand, not the drawing. Defaults match BrushConfig,
+    // which is what a preset restores when you load one.
+
+    val brushSize: Flow<Float> = context.dataStore.data.map { it[BRUSH_SIZE_KEY] ?: 20f }.distinctUntilChanged()
+    val brushOpacity: Flow<Float> = context.dataStore.data.map { it[BRUSH_OPACITY_KEY] ?: 1f }.distinctUntilChanged()
+    val brushFlow: Flow<Float> = context.dataStore.data.map { it[BRUSH_FLOW_KEY] ?: 1f }.distinctUntilChanged()
+    val brushSpacing: Flow<Float> = context.dataStore.data.map { it[BRUSH_SPACING_KEY] ?: 0.1f }.distinctUntilChanged()
+    val brushRotation: Flow<Float> = context.dataStore.data.map { it[BRUSH_ROTATION_KEY] ?: 0f }.distinctUntilChanged()
+    val sizeJitter: Flow<Float> = context.dataStore.data.map { it[SIZE_JITTER_KEY] ?: 0f }.distinctUntilChanged()
+    val sizeMultiplier: Flow<Float> = context.dataStore.data.map { it[SIZE_MULTIPLIER_KEY] ?: 1f }.distinctUntilChanged()
+
+    /** Null means the built-in round tip; same for [brushTextureUri] and no texture. */
+    val brushTipUri: Flow<String?> = context.dataStore.data.map { it[BRUSH_TIP_URI_KEY] }.distinctUntilChanged()
+    val brushTextureUri: Flow<String?> = context.dataStore.data.map { it[BRUSH_TEXTURE_URI_KEY] }.distinctUntilChanged()
+
+    suspend fun setBrushSize(value: Float) { context.dataStore.edit { it[BRUSH_SIZE_KEY] = value } }
+    suspend fun setBrushOpacity(value: Float) { context.dataStore.edit { it[BRUSH_OPACITY_KEY] = value } }
+    suspend fun setBrushFlow(value: Float) { context.dataStore.edit { it[BRUSH_FLOW_KEY] = value } }
+    suspend fun setBrushSpacing(value: Float) { context.dataStore.edit { it[BRUSH_SPACING_KEY] = value } }
+    suspend fun setBrushRotation(value: Float) { context.dataStore.edit { it[BRUSH_ROTATION_KEY] = value } }
+    suspend fun setSizeJitter(value: Float) { context.dataStore.edit { it[SIZE_JITTER_KEY] = value } }
+    suspend fun setSizeMultiplier(value: Float) { context.dataStore.edit { it[SIZE_MULTIPLIER_KEY] = value } }
+
+    suspend fun setBrushTipUri(uri: String?) {
+        context.dataStore.edit { if (uri == null) it.remove(BRUSH_TIP_URI_KEY) else it[BRUSH_TIP_URI_KEY] = uri }
+    }
+
+    suspend fun setBrushTextureUri(uri: String?) {
+        context.dataStore.edit { if (uri == null) it.remove(BRUSH_TEXTURE_URI_KEY) else it[BRUSH_TEXTURE_URI_KEY] = uri }
+    }
 
     val colorHistory: Flow<List<String>> = context.dataStore.data.map { preferences ->
         preferences[COLOR_HISTORY_KEY]?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
