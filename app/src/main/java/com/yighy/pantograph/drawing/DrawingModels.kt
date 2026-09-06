@@ -225,6 +225,13 @@ data class DrawingState(
      * instead of replacing it, so it is a flag of its own rather than a [DrawingMode].
      */
     val isRecoilActive: Boolean = false,
+    /**
+     * Everything but the button, its satellites and the readout chips is hidden.
+     *
+     * Not persisted, deliberately: reopening a project already stripped of its controls, with
+     * no memory of having asked for it, is a worse first second than an extra tap.
+     */
+    val isFullscreen: Boolean = false,
     /** The path tool's points, in the order they were placed. Empty unless one is being built. */
     val pathPoints: List<PathPoint> = emptyList(),
     /** Index of the path point riding the cursor, or -1. */

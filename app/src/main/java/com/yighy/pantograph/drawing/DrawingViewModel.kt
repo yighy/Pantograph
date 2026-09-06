@@ -1091,6 +1091,11 @@ class DrawingViewModel(
         viewModelScope.launch { preferenceManager.setPinnedTools(PinnableTool.toNames(next)) }
     }
 
+    /** Strips the screen back to the button, its satellites and the chips - and back again. */
+    fun toggleFullscreen() {
+        session.update { it.copy(isFullscreen = !it.isFullscreen) }
+    }
+
     /** Arms or disarms the cursor springing back to each stroke's starting point. */
     fun toggleRecoil() {
         session.update { it.copy(isRecoilActive = !it.isRecoilActive) }

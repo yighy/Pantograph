@@ -1,5 +1,6 @@
 package com.yighy.pantograph.drawing
 
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
@@ -46,6 +47,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -111,6 +115,39 @@ fun DrawingScreen(
 
     var viewportSize by remember { mutableStateOf(IntSize.Zero) }
 
+    val isFullscreen by remember(viewModel) {
+        viewModel.uiState.map { it.isFullscreen }.distinctUntilChanged()
+    }.collectAsState(false)
+
+    // The chip is a small target in the corner furthest from the thumb, and in fullscreen it is
+    // the only control left. Back is the universal way out of anything, so it leaves fullscreen
+    // before it leaves the project - and only while there is a fullscreen to leave, so the
+    // ordinary back behaviour is untouched.
+    BackHandler(enabled = isFullscreen) { viewModel.toggleFullscreen() }
+
+    val hideStatusBar by preferenceManager.hideStatusBar.collectAsState(initial = true)
+    val window = (context as? android.app.Activity)?.window
+    LaunchedEffect(isFullscreen, hideStatusBar, window) {
+        val controller = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+            ?: return@LaunchedEffect
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (isFullscreen) {
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            // Back to whatever the setting asked for, rather than to "everything visible".
+            controller.show(WindowInsetsCompat.Type.navigationBars())
+            if (hideStatusBar) controller.hide(WindowInsetsCompat.Type.statusBars())
+            else controller.show(WindowInsetsCompat.Type.statusBars())
+        }
+    }
+    DisposableEffect(window) {
+        onDispose {
+            // Leaving the screen while stripped down would follow you to the project list.
+            window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+                ?.show(WindowInsetsCompat.Type.navigationBars())
+        }
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { paddingValues ->
@@ -127,7 +164,7 @@ fun DrawingScreen(
             ReferenceImageOverlay(viewModel, viewportSize)
 
             // Bottom Toolbar - Animated appearance
-            Box(
+            if (!isFullscreen) Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = 16.dp, vertical = 32.dp)
@@ -146,7 +183,7 @@ fun DrawingScreen(
             }
             
             // Back Button - Styled EXACTLY the same as top right actions
-            Surface(
+            if (!isFullscreen) Surface(
                 modifier = Modifier
                     .padding(16.dp)
                     .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
@@ -175,6 +212,7 @@ fun DrawingScreen(
             ) {
                 LayersAndActionsSection(
                     viewModel = viewModel,
+                    isFullscreen = isFullscreen,
                     showLayersPanel = showLayersPanel,
                     onToggleLayers = { showLayersPanel = !showLayersPanel },
                     onSelectLayer = { editingLayerId = null },
@@ -302,6 +340,8 @@ private fun ActiveStateChip(
 @Composable
 fun LayersAndActionsSection(
     viewModel: DrawingViewModel,
+    /** Strips this section back to the chips, which carry the only way out of fullscreen. */
+    isFullscreen: Boolean = false,
     showLayersPanel: Boolean,
     onToggleLayers: () -> Unit,
     onSelectLayer: (Long) -> Unit,
@@ -355,7 +395,7 @@ fun LayersAndActionsSection(
         // its own top padding instead, which costs nothing while it is hidden.
     ) {
         // Expressive Grouped Container
-        Surface(
+        if (!isFullscreen) Surface(
             shape = MaterialTheme.shapes.large,
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 3.dp,
@@ -374,6 +414,7 @@ fun LayersAndActionsSection(
                     drawingMode = drawingMode,
                     isLazyModeActive = isLazyModeActive,
                     isRecoilActive = isRecoilActive,
+                    isFullscreen = isFullscreen,
                     onRequestSettingsPanel = onRequestSettingsPanel
                 )
 
@@ -556,7 +597,7 @@ fun LayersAndActionsSection(
         // Offset is 2x the panel width: the panel sits 16dp from the screen edge (plus
         // shadow), so sliding by its own width alone leaves a sliver that then vanishes.
         AnimatedVisibility(
-            visible = showLayersPanel,
+            visible = showLayersPanel && !isFullscreen,
             enter = slideInHorizontally(animationSpec = MotionTokens.slideEnter, initialOffsetX = { it * 2 }),
             exit = slideOutHorizontally(animationSpec = MotionTokens.slideExit, targetOffsetX = { it * 2 })
         ) {
@@ -590,6 +631,7 @@ private fun ToolsMenuButton(
     drawingMode: DrawingMode,
     isLazyModeActive: Boolean,
     isRecoilActive: Boolean,
+    isFullscreen: Boolean,
     onRequestSettingsPanel: () -> Unit
 ) {
     var showTools by remember { mutableStateOf(false) }
@@ -623,8 +665,18 @@ private fun ToolsMenuButton(
             ) {
                 Text("View", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    ExtraToolItem("Fit Screen", false, Icons.Rounded.Fullscreen) {
+                    ExtraToolItem("Fit Screen", false, Icons.Rounded.FitScreen) {
                         viewModel.requestFitToScreen()
+                        showTools = false
+                    }
+                    // The way back out is the chip this leaves behind, so it is pinnable like
+                    // any other toggle rather than a one-way door.
+                    ExtraToolItem(
+                        "Fullscreen", isFullscreen, Icons.Rounded.Fullscreen,
+                        isPinned = pinnedTools.contains(PinnableTool.Fullscreen),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Fullscreen) }
+                    ) {
+                        viewModel.toggleFullscreen()
                         showTools = false
                     }
                 }

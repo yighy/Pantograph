@@ -9,6 +9,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Polyline
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Cable
+import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -34,6 +35,11 @@ enum class PinnableTool(
     Gradient("Gradient", Icons.Rounded.Gradient),
     Lazy("Lazy", Icons.Rounded.Cable, opensSettings = true),
     Recoil("Recoil", Icons.Rounded.Replay),
+    /**
+     * Pinnable like the rest, which is what gives it a way *out*: the readout row draws every
+     * armed tool with a cross on it, and that cross is the only control left on screen.
+     */
+    Fullscreen("Full", Icons.Rounded.Fullscreen),
     Lasso("Lasso", Icons.Rounded.Polyline),
     Rect("Rect", Icons.Rounded.HighlightAlt),
     Wand("Wand", Icons.Rounded.AutoFixHigh),
@@ -52,6 +58,7 @@ enum class PinnableTool(
         Gradient -> state.drawingMode is DrawingMode.Gradient
         Lazy -> state.isLazyModeActive
         Recoil -> state.isRecoilActive
+        Fullscreen -> state.isFullscreen
         Lasso -> state.drawingMode is DrawingMode.SelectLasso
         Rect -> state.drawingMode is DrawingMode.SelectRect
         Wand -> state.drawingMode is DrawingMode.SelectWand
@@ -74,6 +81,7 @@ enum class PinnableTool(
             Fill -> viewModel.setBucketFillMode()
             Lazy -> viewModel.toggleLazyMode()
             Recoil -> viewModel.toggleRecoil()
+            Fullscreen -> viewModel.toggleFullscreen()
             Gradient -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.Gradient)
             Lasso -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectLasso)
             Rect -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectRect)
