@@ -420,7 +420,10 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
             item {
                 StudioSection(title = "Jitter", icon = Icons.Rounded.Grain) {
                     DrawingSettingRow("Size", "${(uiState.sizeJitter * 100).toInt()}%", uiState.sizeJitter, { viewModel.setSizeJitter(it) }, 0f..1f)
-                    DrawingSettingRow("Rotation", "${(uiState.brushRotationJitter * 100).toInt()}%", uiState.brushRotationJitter, { viewModel.setRotationJitter(it) }, 0f..1f)
+                    // Degrees, not a fraction like its neighbours: the value is added straight
+                    // to the stamp's angle. Sharing their 0..1 range would cap the whole control
+                    // at one degree.
+                    DrawingSettingRow("Rotation", "${uiState.brushRotationJitter.toInt()}°", uiState.brushRotationJitter, { viewModel.setRotationJitter(it) }, 0f..180f)
                     DrawingSettingRow("Scatter", "${(uiState.scatterJitter * 100).toInt()}%", uiState.scatterJitter, { viewModel.setScatterJitter(it) }, 0f..1f)
                     DrawingSettingRow("Flow", "${(uiState.flowJitter * 100).toInt()}%", uiState.flowJitter, { viewModel.setFlowJitter(it) }, 0f..1f)
 
