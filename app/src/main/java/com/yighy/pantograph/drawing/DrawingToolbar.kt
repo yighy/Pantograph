@@ -890,6 +890,7 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
     val cursorSensitivity by remember(viewModel) { viewModel.uiState.map { it.cursorSensitivity }.distinctUntilChanged() }.collectAsState(0.6f)
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val fillTolerance by remember(viewModel) { viewModel.uiState.map { it.fillTolerance }.distinctUntilChanged() }.collectAsState(10f)
+    val fillGrow by remember(viewModel) { viewModel.uiState.map { it.fillGrow }.distinctUntilChanged() }.collectAsState(2f)
     val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
     val lazyRadius by remember(viewModel) { viewModel.uiState.map { it.lazyRadius }.distinctUntilChanged() }.collectAsState(50f)
 
@@ -910,6 +911,7 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
 
             if (drawingMode is DrawingMode.BucketFill || drawingMode is DrawingMode.SelectWand || drawingMode is DrawingMode.SelectColor) {
                 SettingRow("Tolerance", "${fillTolerance.toInt()}", fillTolerance, { viewModel.setFillTolerance(it) }, 0f..200f)
+                SettingRow("Expand", "${fillGrow.toInt()} px", fillGrow, { viewModel.setFillGrow(it) }, 0f..8f)
             }
         }
     }

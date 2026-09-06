@@ -251,6 +251,10 @@ class DrawingViewModel(
             .onEach { tolerance -> session.update { it.copy(fillTolerance = tolerance) } }
             .launchIn(viewModelScope)
 
+        preferenceManager.fillGrow
+            .onEach { grow -> session.update { it.copy(fillGrow = grow) } }
+            .launchIn(viewModelScope)
+
         // The brush settings that are also global preferences. Walked from one list rather
         // than spelled out here, because BrushPresetController has to write the same set back
         // when a preset is loaded - see MirroredBrushSetting for what a mismatch costs.
@@ -592,7 +596,10 @@ class DrawingViewModel(
                 IntArray(width * height).also { mask.getPixels(it, 0, width, 0, 0, width, height) }
             }
 
-            FloodFill.fill(pixels, width, height, x, y, targetColor, replacementColor, state.fillTolerance, maskPixels)
+            FloodFill.fill(
+                pixels, width, height, x, y, targetColor, replacementColor,
+                state.fillTolerance, maskPixels, state.fillGrow.toInt()
+            )
             bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
 
             withContext(Dispatchers.Main) {
@@ -1075,6 +1082,10 @@ class DrawingViewModel(
 
     fun setFillTolerance(tolerance: Float) {
         viewModelScope.launch { preferenceManager.setFillTolerance(tolerance) }
+    }
+
+    fun setFillGrow(pixels: Float) {
+        viewModelScope.launch { preferenceManager.setFillGrow(pixels.coerceIn(0f, 8f)) }
     }
 
     fun setColorPickerSliderMode(isSlider: Boolean) {

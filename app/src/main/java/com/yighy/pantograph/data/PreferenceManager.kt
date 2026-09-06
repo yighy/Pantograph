@@ -30,6 +30,7 @@ class PreferenceManager(private val context: Context) {
         val HIDE_STATUS_BAR_KEY = booleanPreferencesKey("hide_status_bar")
         val DYNAMIC_COLOR_KEY = booleanPreferencesKey("dynamic_color")
         val FILL_TOLERANCE_KEY = floatPreferencesKey("fill_tolerance")
+        val FILL_GROW_KEY = floatPreferencesKey("fill_grow")
         val ROTATION_JITTER_KEY = floatPreferencesKey("rotation_jitter")
         val VELOCITY_SIZE_KEY = floatPreferencesKey("velocity_size")
         val VELOCITY_FLOW_KEY = floatPreferencesKey("velocity_flow")
@@ -156,6 +157,17 @@ class PreferenceManager(private val context: Context) {
     val fillTolerance: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[FILL_TOLERANCE_KEY] ?: 10f
     }.distinctUntilChanged()
+
+    /**
+     * How far a fill reaches under the edge that stopped it, in pixels.
+     *
+     * Two by default rather than zero: an antialiased line fades over two or three pixels, and
+     * every fill against one leaves a hem without this. Nobody would think to go looking for a
+     * setting to fix what reads as the fill tool simply being wrong.
+     */
+    val fillGrow: Flow<Float> = context.dataStore.data.map { it[FILL_GROW_KEY] ?: 2f }.distinctUntilChanged()
+
+    suspend fun setFillGrow(v: Float) { context.dataStore.edit { it[FILL_GROW_KEY] = v } }
 
     val scatterJitter: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[SCATTER_JITTER_KEY] ?: 0f

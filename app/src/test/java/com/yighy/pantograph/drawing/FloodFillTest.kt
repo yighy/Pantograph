@@ -1,6 +1,7 @@
 package com.yighy.pantograph.drawing
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -85,5 +86,48 @@ class FloodFillTest {
         FloodFill.fill(pixels, 2, 2, 5, 5, white, red, tolerance = 0f)
 
         assertEquals(listOf(white, white, white, white), pixels.toList())
+    }
+
+    @Test
+    fun `growing reaches under the edge that stopped the fill`() {
+        // A 7x1 strip: empty middle, then a half-covered pixel either side standing in for the
+        // fade of an antialiased line, then the line itself. A plain fill stops at the fade.
+        val line = 0xFF000000.toInt()
+        val fade = 0x80000000.toInt()
+        val fill = 0xFFFF0000.toInt()
+        fun strip() = intArrayOf(line, fade, 0, 0, 0, fade, line)
+
+        val plain = strip()
+        FloodFill.fill(plain, 7, 1, 3, 0, 0, fill, tolerance = 0f)
+        assertEquals("the fade should be left alone without a grow", fade, plain[1])
+        assertEquals(fill, plain[3])
+
+        val grown = strip()
+        FloodFill.fill(grown, 7, 1, 3, 0, 0, fill, tolerance = 0f, growPixels = 1)
+        assertTrue("the fade pixel should have been reached", grown[1] != fade)
+        assertEquals("the line itself must not be touched", line, grown[0])
+    }
+
+    @Test
+    fun `a grown pixel keeps the edge's own colour and coverage`() {
+        // The fill goes underneath, so a half-covered black edge over red comes out fully
+        // opaque and dark - not flat red, which is what overwriting would give and what would
+        // eat the antialiasing the grow exists to preserve.
+        val blended = FloodFill.under(top = 0x80000000.toInt(), bottom = 0xFFFF0000.toInt())
+        assertEquals("should end up opaque", 255, (blended ushr 24) and 0xFF)
+        assertTrue("should still be darkened by the edge", ((blended ushr 16) and 0xFF) < 200)
+        assertTrue("should still carry the fill's red", ((blended ushr 16) and 0xFF) > 50)
+    }
+
+    @Test
+    fun `growing stops at the selection mask`() {
+        val fill = 0xFFFF0000.toInt()
+        val pixels = intArrayOf(0, 0, 0, 0, 0)
+        // Only the middle three pixels are selected.
+        val mask = intArrayOf(0, 0xFF000000.toInt(), 0xFF000000.toInt(), 0xFF000000.toInt(), 0)
+        FloodFill.fill(pixels, 5, 1, 2, 0, 0, fill, tolerance = 0f, maskPixels = mask, growPixels = 3)
+        assertEquals("grew past the selection", 0, pixels[0])
+        assertEquals("grew past the selection", 0, pixels[4])
+        assertEquals(fill, pixels[2])
     }
 }

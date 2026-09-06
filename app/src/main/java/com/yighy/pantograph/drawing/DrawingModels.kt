@@ -270,6 +270,8 @@ data class DrawingState(
     val isColorPickerSliderMode: Boolean = false,
     val isEyeDropperMode: Boolean = false,
     val fillTolerance: Float = 10f,
+    /** Pixels the fill reaches under the edge that stopped it; see [PreferenceManager.fillGrow]. */
+    val fillGrow: Float = 2f,
     val isLazyModeActive: Boolean = false,
     val lazyRadius: Float = 50f,
     val showOffscreenCursorArrow: Boolean = false,
