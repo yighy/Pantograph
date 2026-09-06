@@ -138,7 +138,15 @@ class HistoryCoordinator(
         cursorJob = null
     }
 
-    private fun glideCursorTo(anchor: CursorAnchor) {
+    /**
+     * Walks the cursor to [anchor] over [durationMs].
+     *
+     * Public because undo is no longer the only caller: the recoil setting sends the cursor
+     * back to where a stroke began every time the pen comes up, which is the same motion for a
+     * different reason. It takes its own duration because it happens far more often - once per
+     * stroke rather than once in a while.
+     */
+    fun glideCursorTo(anchor: CursorAnchor, durationMs: Long = 150L) {
         cursorJob?.cancel()
         cursorJob = scope.launch(Dispatchers.Main) {
             val fromCursor = session.value.cursorPosition
@@ -146,7 +154,6 @@ class HistoryCoordinator(
             // Time-driven rather than Animatable, for the same reason CanvasTransformController
             // spells out: the Compose animation APIs want a MonotonicFrameClock, and the scope
             // this runs on has none. The easing is pure maths and works anywhere.
-            val durationMs = 150L
             val startTime = android.os.SystemClock.uptimeMillis()
             while (true) {
                 val fraction = ((android.os.SystemClock.uptimeMillis() - startTime).toFloat() / durationMs)

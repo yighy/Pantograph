@@ -65,6 +65,13 @@ class DrawingViewModel(
     private var strokeStartAnchor: CursorAnchor? = null
 
     /**
+     * How long the recoil takes. Shorter than undo's, because it runs once per stroke rather
+     * than once in a while - but not instant: seeing the cursor travel is what stops you losing
+     * it, where a teleport between two marks reads as it having jumped somewhere at random.
+     */
+    private val RECOIL_MS = 110L
+
+    /**
      * Whether the press in progress has put anything on the undo stack yet.
      *
      * [abortCurrentStroke] used to pop regardless, on the assumption that every press ends by
@@ -474,6 +481,12 @@ class DrawingViewModel(
             // Pushed even for an empty stroke: abortCurrentStroke() pops unconditionally.
             history.save(strokeSnapshotSpec(session.value), strokeStartAnchor)
             pressPushedEntry = true
+            // Spent before the anchor is dropped. Sending the cursor back to where the stroke
+            // began leaves the next mark to be measured from somewhere meaningful, instead of
+            // from the far end of the one just made - which is nowhere in particular.
+            if (state.isRecoilActive) {
+                strokeStartAnchor?.let { history.glideCursorTo(it, durationMs = RECOIL_MS) }
+            }
             strokeStartAnchor = null
             commitStrokeToLayer()
             // After the composite, not before: that is where the texture mask and the selection
@@ -1076,6 +1089,11 @@ class DrawingViewModel(
     fun togglePinnedTool(tool: PinnableTool) {
         val next = PinnableTool.togglePin(session.value.pinnedTools, tool)
         viewModelScope.launch { preferenceManager.setPinnedTools(PinnableTool.toNames(next)) }
+    }
+
+    /** Arms or disarms the cursor springing back to each stroke's starting point. */
+    fun toggleRecoil() {
+        session.update { it.copy(isRecoilActive = !it.isRecoilActive) }
     }
 
     fun toggleLazyMode() {

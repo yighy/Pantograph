@@ -329,6 +329,7 @@ fun LayersAndActionsSection(
     val renderVersion by remember(viewModel) { viewModel.uiState.map { it.renderVersion }.distinctUntilChanged() }.collectAsState(0)
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
+    val isRecoilActive by remember(viewModel) { viewModel.uiState.map { it.isRecoilActive }.distinctUntilChanged() }.collectAsState(false)
     // Derived in the flow rather than rebuilt from the fields above, so the row cannot drift
     // from what PinnableTool.isActive considers on. Only ever one or two entries: drawingMode
     // holds a single value, so every tool but Lazy excludes all the others.
@@ -372,6 +373,7 @@ fun LayersAndActionsSection(
                     viewModel = viewModel,
                     drawingMode = drawingMode,
                     isLazyModeActive = isLazyModeActive,
+                    isRecoilActive = isRecoilActive,
                     onRequestSettingsPanel = onRequestSettingsPanel
                 )
 
@@ -587,13 +589,14 @@ private fun ToolsMenuButton(
     viewModel: DrawingViewModel,
     drawingMode: DrawingMode,
     isLazyModeActive: Boolean,
+    isRecoilActive: Boolean,
     onRequestSettingsPanel: () -> Unit
 ) {
     var showTools by remember { mutableStateOf(false) }
     val pinnedTools by remember(viewModel) { viewModel.uiState.map { it.pinnedTools }.distinctUntilChanged() }.collectAsState(emptyList())
     val isBucketFill = drawingMode is DrawingMode.BucketFill
     val isSelectionMode = drawingMode.isSelectionTool()
-    val isActive = showTools || isBucketFill || isLazyModeActive || isSelectionMode || drawingMode is DrawingMode.Gradient
+    val isActive = showTools || isBucketFill || isLazyModeActive || isRecoilActive || isSelectionMode || drawingMode is DrawingMode.Gradient
 
     Box {
         IconButton(
@@ -674,6 +677,16 @@ private fun ToolsMenuButton(
                         val turningOn = !isLazyModeActive
                         viewModel.toggleLazyMode()
                         if (turningOn) onRequestSettingsPanel()
+                        showTools = false
+                    }
+                    // Beside Lazy rather than among the paint tools: neither of these paints,
+                    // both steady the hand that does.
+                    ExtraToolItem(
+                        "Recoil", isRecoilActive, Icons.Rounded.Replay,
+                        isPinned = pinnedTools.contains(PinnableTool.Recoil),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Recoil) }
+                    ) {
+                        viewModel.toggleRecoil()
                         showTools = false
                     }
                 }

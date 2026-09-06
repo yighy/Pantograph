@@ -9,6 +9,7 @@ import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Polyline
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Cable
+import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
@@ -32,6 +33,7 @@ enum class PinnableTool(
     Fill("Fill", Icons.Rounded.FormatColorFill, opensSettings = true),
     Gradient("Gradient", Icons.Rounded.Gradient),
     Lazy("Lazy", Icons.Rounded.Cable, opensSettings = true),
+    Recoil("Recoil", Icons.Rounded.Replay),
     Lasso("Lasso", Icons.Rounded.Polyline),
     Rect("Rect", Icons.Rounded.HighlightAlt),
     Wand("Wand", Icons.Rounded.AutoFixHigh),
@@ -49,6 +51,7 @@ enum class PinnableTool(
         Fill -> state.drawingMode is DrawingMode.BucketFill
         Gradient -> state.drawingMode is DrawingMode.Gradient
         Lazy -> state.isLazyModeActive
+        Recoil -> state.isRecoilActive
         Lasso -> state.drawingMode is DrawingMode.SelectLasso
         Rect -> state.drawingMode is DrawingMode.SelectRect
         Wand -> state.drawingMode is DrawingMode.SelectWand
@@ -70,6 +73,7 @@ enum class PinnableTool(
         when (this) {
             Fill -> viewModel.setBucketFillMode()
             Lazy -> viewModel.toggleLazyMode()
+            Recoil -> viewModel.toggleRecoil()
             Gradient -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.Gradient)
             Lasso -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectLasso)
             Rect -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectRect)

@@ -218,6 +218,13 @@ data class DrawingState(
     val currentPath: DrawingPath? = null,
     
     val cursorPosition: Offset = Offset.Zero,
+    /**
+     * Whether the cursor springs back to where a stroke began when the pen comes up.
+     *
+     * A constraint rather than a tool, like lazy mode: it modifies whatever brush is in hand
+     * instead of replacing it, so it is a flag of its own rather than a [DrawingMode].
+     */
+    val isRecoilActive: Boolean = false,
     /** The path tool's points, in the order they were placed. Empty unless one is being built. */
     val pathPoints: List<PathPoint> = emptyList(),
     /** Index of the path point riding the cursor, or -1. */
