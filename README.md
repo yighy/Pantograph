@@ -54,6 +54,7 @@ as you cross a threshold.
 - Custom brush tips and textures.
 - The whole brush follows you between projects; only the colour stays with the drawing.
 - Presets in folders, edited in a Brush Studio that previews each as a real stroke drawn by the engine.
+- Ships with nine starter brushes — liner, ink, nib, pencil, chalk, marker, airbrush, stipple and smudge — each showing a different part of the engine.
 
 **Tools**
 - Freehand, straight line, eraser, bucket fill, linear gradient.
