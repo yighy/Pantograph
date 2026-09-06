@@ -46,15 +46,21 @@ as you cross a threshold.
 
 **Brush engine**
 - Size, opacity, flow, softness, smoothing, spacing and rotation.
-- Symmetric jitter on size, rotation, scatter and flow.
+- Round or square tip, squashed by a ratio into a nib or a flat brush — which is what gives rotation and follow-direction something to turn.
+- Anti-aliasing off for a hard, stepped edge.
+- Symmetric jitter on size, rotation, scatter and flow, and on hue, saturation and value.
+- Smudge: paint with the colour already on the layer instead of your own.
 - Velocity dynamics: stroke speed drives size, flow and scatter.
 - Custom brush tips and textures.
+- The whole brush follows you between projects; only the colour stays with the drawing.
 - Presets in folders, edited in a Brush Studio that previews each as a real stroke drawn by the engine.
 
 **Tools**
 - Freehand, straight line, eraser, bucket fill, linear gradient.
 - Path: place points and bend the curve running through them. Hold the button to steer a point before it settles, sharpen one to turn a corner, or join the two ends into a loop.
+- Bucket fill reaches under the antialiased edge that stopped it, so no unfilled hem is left hugging the outline.
 - Lazy/rope mode for extra-smooth curves.
+- Recoil: the cursor springs back to where each stroke began, so the next mark is offset from somewhere meaningful.
 - Selection: lasso, rectangle, magic wand, colour select — move, transform, duplicate, invert.
 - A lifted selection survives a layer change, so it can be pasted into another layer.
 - Active selections clip every tool.
@@ -67,6 +73,7 @@ as you cross a threshold.
 - Import an image as a new layer, positioned before it is applied.
 - Floating reference image window — movable, resizable, colour-pickable.
 - Eyedropper, colour history, HSB picker.
+- Fullscreen: everything goes but the floating button, its satellites and the state chips — which is still a complete set of controls.
 - Export as PNG.
 
 ## Building
