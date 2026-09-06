@@ -147,5 +147,26 @@ data class CustomBrushEntity(
 
     // Scales `size` past the slider's ceiling
     @ColumnInfo(defaultValue = "1")
-    val sizeMultiplier: Float = 1f
+    val sizeMultiplier: Float = 1f,
+
+    /** Name of a [com.yighy.pantograph.drawing.TipShape]; unknown values read as Round. */
+    @ColumnInfo(defaultValue = "Round")
+    val tipShape: String = "Round",
+    @ColumnInfo(defaultValue = "1")
+    val tipRatio: Float = 1f,
+
+    @ColumnInfo(defaultValue = "1")
+    val antiAlias: Boolean = true,
+
+    @ColumnInfo(defaultValue = "0")
+    val hueJitter: Float = 0f,
+    @ColumnInfo(defaultValue = "0")
+    val saturationJitter: Float = 0f,
+    @ColumnInfo(defaultValue = "0")
+    val valueJitter: Float = 0f,
+
+    @ColumnInfo(defaultValue = "0")
+    val smudge: Float = 0f,
+    @ColumnInfo(defaultValue = "0.5")
+    val smudgeLength: Float = 0.5f
 )

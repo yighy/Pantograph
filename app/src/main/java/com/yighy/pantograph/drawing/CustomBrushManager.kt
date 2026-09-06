@@ -27,6 +27,16 @@ fun CustomBrushEntity.toBrushConfig() = BrushConfig(
     velocityFlow = velocityFlow,
     velocityScatter = velocityScatter,
     sizeMultiplier = sizeMultiplier,
+    // Unknown names read as Round rather than throwing, so a preset written by a later build
+    // degrades instead of taking the library down with it.
+    tipShape = TipShape.entries.firstOrNull { it.name == tipShape } ?: TipShape.Round,
+    tipRatio = tipRatio,
+    antiAlias = antiAlias,
+    hueJitter = hueJitter,
+    saturationJitter = saturationJitter,
+    valueJitter = valueJitter,
+    smudge = smudge,
+    smudgeLength = smudgeLength,
     folderId = folderId
 )
 
@@ -80,7 +90,15 @@ class CustomBrushManager(private val repository: ProjectRepository) {
         velocitySize = state.velocitySizeAmount,
         velocityFlow = state.velocityFlowAmount,
         velocityScatter = state.velocityScatterAmount,
-        sizeMultiplier = state.sizeMultiplier
+        sizeMultiplier = state.sizeMultiplier,
+        tipShape = state.tipShape.name,
+        tipRatio = state.tipRatio,
+        antiAlias = state.antiAlias,
+        hueJitter = state.hueJitter,
+        saturationJitter = state.saturationJitter,
+        valueJitter = state.valueJitter,
+        smudge = state.smudge,
+        smudgeLength = state.smudgeLength
     )
 
     /**

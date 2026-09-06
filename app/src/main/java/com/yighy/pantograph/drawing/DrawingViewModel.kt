@@ -1054,6 +1054,26 @@ class DrawingViewModel(
     fun setBrushSpacing(spacing: Float) = updatePreference({ preferenceManager.setBrushSpacing(spacing) }) { it.copy(brushSpacing = spacing) }
     fun setBrushRotation(rotation: Float) = updatePreference({ preferenceManager.setBrushRotation(rotation) }) { it.copy(brushRotation = rotation) }
 
+    fun setSmudge(v: Float) = updatePreference({ preferenceManager.setSmudge(v) }) { it.copy(smudge = v) }
+    fun setSmudgeLength(v: Float) = updatePreference({ preferenceManager.setSmudgeLength(v) }) { it.copy(smudgeLength = v) }
+
+    fun setHueJitter(v: Float) = updatePreference({ preferenceManager.setHueJitter(v) }) { it.copy(hueJitter = v) }
+    fun setSaturationJitter(v: Float) = updatePreference({ preferenceManager.setSaturationJitter(v) }) { it.copy(saturationJitter = v) }
+    fun setValueJitter(v: Float) = updatePreference({ preferenceManager.setValueJitter(v) }) { it.copy(valueJitter = v) }
+
+    fun setAntiAlias(on: Boolean) = updatePreference({ preferenceManager.setAntiAlias(on) }) { it.copy(antiAlias = on) }
+
+    fun setTipShape(shape: TipShape) = updatePreference({ preferenceManager.setTipShape(shape.name) }) { it.copy(tipShape = shape) }
+
+    /**
+     * Squashes the built-in tip. Never reaches zero: a tip with no width at all has nothing to
+     * stamp, and the stroke would simply stop appearing.
+     */
+    fun setTipRatio(ratio: Float) {
+        val clamped = ratio.coerceIn(0.05f, 1f)
+        updatePreference({ preferenceManager.setTipRatio(clamped) }) { it.copy(tipRatio = clamped) }
+    }
+
     fun setRotationJitter(jitter: Float) = updatePreference({ preferenceManager.setRotationJitter(jitter) }) { it.copy(brushRotationJitter = jitter) }
 
     fun setSizeJitter(jitter: Float) = updatePreference({ preferenceManager.setSizeJitter(jitter) }) { it.copy(sizeJitter = jitter) }

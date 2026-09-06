@@ -52,6 +52,14 @@ class PreferenceManager(private val context: Context) {
         val SIZE_MULTIPLIER_KEY = floatPreferencesKey("size_multiplier")
         val BRUSH_TIP_URI_KEY = stringPreferencesKey("brush_tip_uri")
         val BRUSH_TEXTURE_URI_KEY = stringPreferencesKey("brush_texture_uri")
+        val TIP_SHAPE_KEY = stringPreferencesKey("tip_shape")
+        val TIP_RATIO_KEY = floatPreferencesKey("tip_ratio")
+        val ANTI_ALIAS_KEY = booleanPreferencesKey("anti_alias")
+        val HUE_JITTER_KEY = floatPreferencesKey("hue_jitter")
+        val SATURATION_JITTER_KEY = floatPreferencesKey("saturation_jitter")
+        val VALUE_JITTER_KEY = floatPreferencesKey("value_jitter")
+        val SMUDGE_KEY = floatPreferencesKey("smudge")
+        val SMUDGE_LENGTH_KEY = floatPreferencesKey("smudge_length")
         val KEEP_UNDONE_STROKES_KEY = booleanPreferencesKey("keep_undone_strokes")
     }
 
@@ -113,6 +121,31 @@ class PreferenceManager(private val context: Context) {
     /** Null means the built-in round tip; same for [brushTextureUri] and no texture. */
     val brushTipUri: Flow<String?> = context.dataStore.data.map { it[BRUSH_TIP_URI_KEY] }.distinctUntilChanged()
     val brushTextureUri: Flow<String?> = context.dataStore.data.map { it[BRUSH_TEXTURE_URI_KEY] }.distinctUntilChanged()
+
+    /** Name of a TipShape; the drawing layer resolves it, and an unknown one reads as Round. */
+    val tipShape: Flow<String> = context.dataStore.data.map { it[TIP_SHAPE_KEY] ?: "Round" }.distinctUntilChanged()
+    val tipRatio: Flow<Float> = context.dataStore.data.map { it[TIP_RATIO_KEY] ?: 1f }.distinctUntilChanged()
+
+    val antiAlias: Flow<Boolean> = context.dataStore.data.map { it[ANTI_ALIAS_KEY] ?: true }.distinctUntilChanged()
+
+    val hueJitter: Flow<Float> = context.dataStore.data.map { it[HUE_JITTER_KEY] ?: 0f }.distinctUntilChanged()
+    val saturationJitter: Flow<Float> = context.dataStore.data.map { it[SATURATION_JITTER_KEY] ?: 0f }.distinctUntilChanged()
+    val valueJitter: Flow<Float> = context.dataStore.data.map { it[VALUE_JITTER_KEY] ?: 0f }.distinctUntilChanged()
+
+    val smudge: Flow<Float> = context.dataStore.data.map { it[SMUDGE_KEY] ?: 0f }.distinctUntilChanged()
+    val smudgeLength: Flow<Float> = context.dataStore.data.map { it[SMUDGE_LENGTH_KEY] ?: 0.5f }.distinctUntilChanged()
+
+    suspend fun setSmudge(v: Float) { context.dataStore.edit { it[SMUDGE_KEY] = v } }
+    suspend fun setSmudgeLength(v: Float) { context.dataStore.edit { it[SMUDGE_LENGTH_KEY] = v } }
+
+    suspend fun setHueJitter(v: Float) { context.dataStore.edit { it[HUE_JITTER_KEY] = v } }
+    suspend fun setSaturationJitter(v: Float) { context.dataStore.edit { it[SATURATION_JITTER_KEY] = v } }
+    suspend fun setValueJitter(v: Float) { context.dataStore.edit { it[VALUE_JITTER_KEY] = v } }
+
+    suspend fun setAntiAlias(on: Boolean) { context.dataStore.edit { it[ANTI_ALIAS_KEY] = on } }
+
+    suspend fun setTipShape(name: String) { context.dataStore.edit { it[TIP_SHAPE_KEY] = name } }
+    suspend fun setTipRatio(value: Float) { context.dataStore.edit { it[TIP_RATIO_KEY] = value } }
 
     suspend fun setBrushSize(value: Float) { context.dataStore.edit { it[BRUSH_SIZE_KEY] = value } }
     suspend fun setBrushOpacity(value: Float) { context.dataStore.edit { it[BRUSH_OPACITY_KEY] = value } }

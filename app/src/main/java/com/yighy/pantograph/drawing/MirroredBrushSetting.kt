@@ -113,6 +113,28 @@ sealed class MirroredBrushSetting<T>(val label: String, val stateField: String) 
         override fun applyTo(state: DrawingState, value: Float) = state.copy(sizeMultiplier = value)
     }
 
+    data object Shape : MirroredBrushSetting<String>("Tip shape", "tipShape") {
+        override fun flow(preferences: PreferenceManager) = preferences.tipShape
+        override suspend fun persist(preferences: PreferenceManager, value: String) = preferences.setTipShape(value)
+        override fun readFrom(brush: BrushConfig) = brush.tipShape.name
+        override fun applyTo(state: DrawingState, value: String) =
+            state.copy(tipShape = TipShape.entries.firstOrNull { it.name == value } ?: TipShape.Round)
+    }
+
+    data object Ratio : MirroredBrushSetting<Float>("Tip ratio", "tipRatio") {
+        override fun flow(preferences: PreferenceManager) = preferences.tipRatio
+        override suspend fun persist(preferences: PreferenceManager, value: Float) = preferences.setTipRatio(value)
+        override fun readFrom(brush: BrushConfig) = brush.tipRatio
+        override fun applyTo(state: DrawingState, value: Float) = state.copy(tipRatio = value)
+    }
+
+    data object AntiAlias : MirroredBrushSetting<Boolean>("Anti-aliasing", "antiAlias") {
+        override fun flow(preferences: PreferenceManager) = preferences.antiAlias
+        override suspend fun persist(preferences: PreferenceManager, value: Boolean) = preferences.setAntiAlias(value)
+        override fun readFrom(brush: BrushConfig) = brush.antiAlias
+        override fun applyTo(state: DrawingState, value: Boolean) = state.copy(antiAlias = value)
+    }
+
     // ============================ Jitters ============================
 
     data object RotationJitter : MirroredBrushSetting<Float>("Rotation jitter", "brushRotationJitter") {
@@ -127,6 +149,41 @@ sealed class MirroredBrushSetting<T>(val label: String, val stateField: String) 
         override suspend fun persist(preferences: PreferenceManager, value: Float) = preferences.setSizeJitter(value)
         override fun readFrom(brush: BrushConfig) = brush.sizeJitter
         override fun applyTo(state: DrawingState, value: Float) = state.copy(sizeJitter = value)
+    }
+
+    data object Smudge : MirroredBrushSetting<Float>("Smudge", "smudge") {
+        override fun flow(preferences: PreferenceManager) = preferences.smudge
+        override suspend fun persist(preferences: PreferenceManager, value: Float) = preferences.setSmudge(value)
+        override fun readFrom(brush: BrushConfig) = brush.smudge
+        override fun applyTo(state: DrawingState, value: Float) = state.copy(smudge = value)
+    }
+
+    data object SmudgeLength : MirroredBrushSetting<Float>("Smudge length", "smudgeLength") {
+        override fun flow(preferences: PreferenceManager) = preferences.smudgeLength
+        override suspend fun persist(preferences: PreferenceManager, value: Float) = preferences.setSmudgeLength(value)
+        override fun readFrom(brush: BrushConfig) = brush.smudgeLength
+        override fun applyTo(state: DrawingState, value: Float) = state.copy(smudgeLength = value)
+    }
+
+    data object HueJitter : MirroredBrushSetting<Float>("Hue jitter", "hueJitter") {
+        override fun flow(preferences: PreferenceManager) = preferences.hueJitter
+        override suspend fun persist(preferences: PreferenceManager, value: Float) = preferences.setHueJitter(value)
+        override fun readFrom(brush: BrushConfig) = brush.hueJitter
+        override fun applyTo(state: DrawingState, value: Float) = state.copy(hueJitter = value)
+    }
+
+    data object SaturationJitter : MirroredBrushSetting<Float>("Saturation jitter", "saturationJitter") {
+        override fun flow(preferences: PreferenceManager) = preferences.saturationJitter
+        override suspend fun persist(preferences: PreferenceManager, value: Float) = preferences.setSaturationJitter(value)
+        override fun readFrom(brush: BrushConfig) = brush.saturationJitter
+        override fun applyTo(state: DrawingState, value: Float) = state.copy(saturationJitter = value)
+    }
+
+    data object ValueJitter : MirroredBrushSetting<Float>("Value jitter", "valueJitter") {
+        override fun flow(preferences: PreferenceManager) = preferences.valueJitter
+        override suspend fun persist(preferences: PreferenceManager, value: Float) = preferences.setValueJitter(value)
+        override fun readFrom(brush: BrushConfig) = brush.valueJitter
+        override fun applyTo(state: DrawingState, value: Float) = state.copy(valueJitter = value)
     }
 
     data object ScatterJitter : MirroredBrushSetting<Float>("Scatter jitter", "scatterJitter") {
@@ -184,7 +241,9 @@ sealed class MirroredBrushSetting<T>(val label: String, val stateField: String) 
         /** Every setting mirrored between a preference and the brush in hand. */
         val ALL: List<MirroredBrushSetting<*>> = listOf(
             Size, Softness, Opacity, BrushFlow, Spacing, Smoothing, Rotation, SizeMultiplier,
+            Shape, Ratio, AntiAlias,
             RotationJitter, SizeJitter, ScatterJitter, FlowJitter, RotationFollow,
+            HueJitter, SaturationJitter, ValueJitter, Smudge, SmudgeLength,
             VelocityEnabled, VelocitySize, VelocityFlow, VelocityScatter
         )
 

@@ -552,6 +552,10 @@ fun CursorLayer(viewModel: DrawingViewModel) {
     val cursorThickness by remember(viewModel) { viewModel.uiState.map { it.cursorThickness }.distinctUntilChanged() }.collectAsState(1.0f)
     val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
     val lazyRadius by remember(viewModel) { viewModel.uiState.map { it.lazyRadius }.distinctUntilChanged() }.collectAsState(50f)
+    val tipShape by remember(viewModel) { viewModel.uiState.map { it.tipShape }.distinctUntilChanged() }.collectAsState(TipShape.Round)
+    val tipRatio by remember(viewModel) { viewModel.uiState.map { it.tipRatio }.distinctUntilChanged() }.collectAsState(1f)
+    val brushRotation by remember(viewModel) { viewModel.uiState.map { it.brushRotation }.distinctUntilChanged() }.collectAsState(0f)
+    val hasCustomTip by remember(viewModel) { viewModel.uiState.map { it.brushTipUri != null }.distinctUntilChanged() }.collectAsState(false)
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         val invScale = 1f / canvasScale
@@ -596,13 +600,25 @@ fun CursorLayer(viewModel: DrawingViewModel) {
         // Brush Size Preview (Centered on brushPosition if lazy, otherwise cursorPosition)
         val previewCenter = if (isLazyModeActive) brushPosition else cursorPosition
         
-        drawCircle(
-            color = if (isLazyModeActive) brushDrawColor else cursorDrawColor,
-            radius = (brushWidth / 2f),
-            center = previewCenter,
-            style = Stroke(width = sw),
-            blendMode = BlendMode.Difference
-        )
+        // The preview draws the stamp the brush will actually lay down, squashed and turned.
+        // A circle standing in for an ellipse would be a readout that quietly disagrees with
+        // the tool. A custom tip keeps the plain circle: its outline is its own business, and
+        // guessing at it would be a worse lie than admitting we do not know.
+        val previewColor = if (isLazyModeActive) brushDrawColor else cursorDrawColor
+        val rx = brushWidth / 2f
+        val ry = rx * tipRatio
+        if (hasCustomTip) {
+            drawCircle(previewColor, rx, previewCenter, style = Stroke(sw), blendMode = BlendMode.Difference)
+        } else {
+            rotate(degrees = brushRotation, pivot = previewCenter) {
+                val corner = Offset(previewCenter.x - rx, previewCenter.y - ry)
+                val box = androidx.compose.ui.geometry.Size(rx * 2f, ry * 2f)
+                when (tipShape) {
+                    TipShape.Round -> drawOval(previewColor, corner, box, style = Stroke(sw), blendMode = BlendMode.Difference)
+                    TipShape.Square -> drawRect(previewColor, corner, box, style = Stroke(sw), blendMode = BlendMode.Difference)
+                }
+            }
+        }
     }
 }
 

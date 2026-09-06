@@ -44,7 +44,56 @@ class StrokeEngine {
     private val sharedPaint = Paint().apply { isAntiAlias = true }
     private val stampRect = RectF()
     private var cachedStampBitmap: Bitmap? = null
-    private var lastStampKey: String = ""
+
+    /** The layer's colour at a point, or transparent off the edge and with no layer. */
+    private fun sampleLayer(bitmap: Bitmap?, x: Float, y: Float): Int {
+        if (bitmap == null || bitmap.width <= 0 || bitmap.height <= 0) return 0
+        return bitmap.getPixel(
+            x.toInt().coerceIn(0, bitmap.width - 1),
+            y.toInt().coerceIn(0, bitmap.height - 1)
+        )
+    }
+
+    /** [from] moved [t] of the way towards [to], per channel, alpha included. */
+    private fun mixArgb(from: Int, to: Int, t: Float): Int {
+        val f = t.coerceIn(0f, 1f)
+        fun channel(shift: Int): Int {
+            val a = (from shr shift) and 0xFF
+            val b = (to shr shift) and 0xFF
+            return (a + (b - a) * f).toInt().coerceIn(0, 255)
+        }
+        return (channel(24) shl 24) or (channel(16) shl 16) or (channel(8) shl 8) or channel(0)
+    }
+
+    /** Reused by the colour jitter so a stroke does not allocate one of these per stamp. */
+    private val hsvScratch = FloatArray(3)
+
+    /**
+     * The colour the smudge brush is carrying, and whether it has picked any up yet.
+     *
+     * Sampled from the layer rather than from the stroke buffer, which holds only what this
+     * stroke has laid down so far. That means smudging back over your own smear picks up what
+     * was there before it - the layer does not change until pen-up - which is the honest limit
+     * of doing this without compositing mid-stroke.
+     */
+    private var carriedColor: Int = 0
+    private var carryingColor = false
+    /**
+     * Everything the cached stamp was built from.
+     *
+     * The whole brush rather than a hand-picked list of what was thought to matter. That list
+     * was wrong every time a parameter was added: the stamp went on using the one it had last
+     * built, so the studio preview showed the old shape and the canvas painted it, until some
+     * unrelated change happened to move the key. Colour and the eraser flag ride along because
+     * they change the stamp without being part of a preset.
+     *
+     * [DrawingState.toBrushConfig] is test-enforced to carry every parameter a preset has, so
+     * this cannot quietly miss one. Rebuilding for a change that did not need it costs a single
+     * small bitmap, and only ever between strokes - nothing in here moves during one.
+     */
+    private data class StampKey(val brush: BrushConfig)
+
+    private var lastStampKey: StampKey? = null
 
     /** How far the cached stamp must be scaled when drawn; above 1 only past the raster cap. */
     private var cachedStampScale = 1f
@@ -110,6 +159,7 @@ class StrokeEngine {
         clearTarget()
         resetSpacing(state)
         strokeDistance = 0f
+        carryingColor = false
         smoothedSpeed = 0f
         currentVelocityNorm = 0f
         velocityDynamicsActive = false
@@ -272,8 +322,10 @@ class StrokeEngine {
     private fun updateStampCache(state: DrawingState) {
         val isEraser = state.drawingMode is DrawingMode.Eraser || state.drawingMode is DrawingMode.StraightLineEraser
         val width = state.effectiveWidth
-        val key = "${width}_${state.brushSoftness}_" +
-                  "${state.selectedColor.toArgb()}_${state.brushTipUri}_$isEraser"
+        // Colour is no longer part of this: the stamp is built as a plain alpha mask and
+        // tinted when it is laid down. Changing colour - or jittering it per stamp - therefore
+        // costs nothing, where before every shade rebuilt the bitmap.
+        val key = StampKey(state.toBrushConfig())
 
         if (key == lastStampKey && cachedStampBitmap != null) return
 
@@ -294,16 +346,20 @@ class StrokeEngine {
         // Texture is NOT baked into the stamp: it's applied canvas-anchored over the whole
         // stroke at composition time (see applyTextureMask), so it reads as paper grain.
         val paint = Paint().apply {
-            isAntiAlias = true
-            // Eraser tip needs to be solid black for the alpha mask logic later
-            color = if (isEraser) android.graphics.Color.BLACK else state.selectedColor.toArgb()
+            // Off gives the hard stepped edge a pixel-art brush needs. The blur below is
+            // skipped with it, since softening an edge is antialiasing by another name.
+            isAntiAlias = state.antiAlias
+            // Opaque white: what is kept here is the shape's alpha, and the colour arrives at
+            // draw time. The eraser wants the same mask - the stroke buffer it fills is used as
+            // one either way.
+            color = android.graphics.Color.WHITE
             alpha = 255
         }
 
         // In raster coordinates: below the cap the scale is 1 and this is plain width/2, above
         // it the stamp is drawn into the smaller bitmap and grown back at draw time.
         var drawRadius = (width / 2f) / cachedStampScale
-        if (state.brushSoftness > 0f) {
+        if (state.brushSoftness > 0f && state.antiAlias) {
             val blurRadius = drawRadius * state.brushSoftness
             if (blurRadius > 0.1f) {
                 paint.maskFilter = BlurMaskFilter(blurRadius, BlurMaskFilter.Blur.NORMAL)
@@ -313,14 +369,21 @@ class StrokeEngine {
         }
 
         if (state.brushTipBitmap != null) {
-            val tipPaint = Paint(paint)
-            if (!isEraser) {
-                tipPaint.colorFilter = PorterDuffColorFilter(state.selectedColor.toArgb(), PorterDuff.Mode.SRC_IN)
-            }
+            // Drawn as it is, colours and all: the tint at draw time replaces its RGB and keeps
+            // its alpha, which is what the filter here used to do a step earlier.
             val rect = RectF(center - drawRadius, center - drawRadius, center + drawRadius, center + drawRadius)
-            canvas.drawBitmap(state.brushTipBitmap, null, rect, tipPaint)
+            canvas.drawBitmap(state.brushTipBitmap, null, rect, Paint(paint))
         } else {
-            canvas.drawCircle(center, center, drawRadius, paint)
+            // The ratio squashes the short axis, which is what gives rotation something to act
+            // on: a circle turned is the same circle, an ellipse turned is a nib. Floored at one
+            // pixel so a very thin tip still has something to stamp.
+            val rx = drawRadius
+            val ry = max(1f, drawRadius * state.tipRatio)
+            val box = RectF(center - rx, center - ry, center + rx, center + ry)
+            when (state.tipShape) {
+                TipShape.Round -> canvas.drawOval(box, paint)
+                TipShape.Square -> canvas.drawRect(box, paint)
+            }
         }
 
         cachedStampBitmap?.recycle()
@@ -346,7 +409,7 @@ class StrokeEngine {
         val stamp = cachedStampBitmap ?: return
 
         sharedPaint.reset()
-        sharedPaint.isAntiAlias = true
+        sharedPaint.isAntiAlias = state.antiAlias
         sharedPaint.isFilterBitmap = true
         // Only use flow here, opacity is applied during composition.
         // Velocity dynamics use a multiplicative scale (3^x) so +100% and -100% have the
@@ -358,6 +421,20 @@ class StrokeEngine {
 
         // Use SRC_OVER even for eraser here, we are building the "stroke mask"
         sharedPaint.xfermode = null
+
+        // The stamp is a mask, so the colour is applied here rather than baked in. The eraser
+        // only ever needs alpha - the buffer it fills is a mask either way - so black will do.
+        val erasing = state.drawingMode is DrawingMode.Eraser ||
+            state.drawingMode is DrawingMode.StraightLineEraser
+        val baseColor = if (erasing) android.graphics.Color.BLACK else state.selectedColor.toArgb()
+        val jittersColor = state.hueJitter > 0f || state.saturationJitter > 0f || state.valueJitter > 0f
+        // Smudging an eraser has nothing to mean: the buffer it fills is a mask, and the colour
+        // in it is never looked at.
+        val smudging = state.smudge > 0f && !erasing
+        val layerUnderStroke = if (smudging) state.layerBitmaps[state.activeLayerId] else null
+        if (!jittersColor && !smudging) {
+            sharedPaint.colorFilter = PorterDuffColorFilter(baseColor, PorterDuff.Mode.SRC_IN)
+        }
 
         val width = state.effectiveWidth
         val dist = (to - from).getDistance()
@@ -393,8 +470,11 @@ class StrokeEngine {
                 val flowVariation = if (state.flowJitter > 0f) {
                     1f + (localRandom.nextFloat() * 2f - 1f) * state.flowJitter
                 } else 1f
-                sharedPaint.alpha = (baseFlow * flowVariation * 255f).toInt().coerceIn(0, 255)
 
+
+                // Colour jitter, symmetric like the others so raising it varies the mark
+                // without drifting its average hue. Only reached when something is set: the
+                // filter is an allocation, and most brushes want the one made before the loop.
                 var sx = px
                 var sy = py
 
@@ -420,6 +500,49 @@ class StrokeEngine {
                     val perpRad = Math.toRadians((segmentAngle + 90f).toDouble())
                     sx += (cos(perpRad) * offsetDist).toFloat()
                     sy += (sin(perpRad) * offsetDist).toFloat()
+                }
+
+                // Smudge first, so what the jitter varies is the colour actually being laid
+                // down rather than the one the brush was set to.
+                var stampColor = baseColor
+                var alphaScale = 1f
+                if (smudging) {
+                    val sampled = sampleLayer(layerUnderStroke, sx, sy)
+                    carriedColor = if (!carryingColor) {
+                        carryingColor = true
+                        sampled
+                    } else {
+                        // Length is how much of the old colour survives, so a long smudge
+                        // refreshes slowly and drags one colour further.
+                        mixArgb(sampled, carriedColor, state.smudgeLength)
+                    }
+                    stampColor = mixArgb(baseColor, carriedColor, state.smudge)
+                    // Picking up from bare canvas has to deposit nothing, or the smudge would
+                    // invent opaque paint where there was none.
+                    alphaScale = 1f + (android.graphics.Color.alpha(carriedColor) / 255f - 1f) * state.smudge
+                    sharedPaint.colorFilter = PorterDuffColorFilter(stampColor, PorterDuff.Mode.SRC_IN)
+                }
+
+                sharedPaint.alpha = (baseFlow * flowVariation * alphaScale * 255f)
+                    .toInt().coerceIn(0, 255)
+
+                if (jittersColor) {
+                    android.graphics.Color.colorToHSV(stampColor, hsvScratch)
+                    if (state.hueJitter > 0f) {
+                        val shift = (localRandom.nextFloat() * 2f - 1f) * state.hueJitter * 180f
+                        hsvScratch[0] = ((hsvScratch[0] + shift) % 360f + 360f) % 360f
+                    }
+                    if (state.saturationJitter > 0f) {
+                        hsvScratch[1] = (hsvScratch[1] +
+                            (localRandom.nextFloat() * 2f - 1f) * state.saturationJitter).coerceIn(0f, 1f)
+                    }
+                    if (state.valueJitter > 0f) {
+                        hsvScratch[2] = (hsvScratch[2] +
+                            (localRandom.nextFloat() * 2f - 1f) * state.valueJitter).coerceIn(0f, 1f)
+                    }
+                    sharedPaint.colorFilter = PorterDuffColorFilter(
+                        android.graphics.Color.HSVToColor(hsvScratch), PorterDuff.Mode.SRC_IN
+                    )
                 }
 
                 canvas.save()

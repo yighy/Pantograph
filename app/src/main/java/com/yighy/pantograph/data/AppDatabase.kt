@@ -8,7 +8,7 @@ import com.yighy.pantograph.BuildConfig
 
 @Database(
     entities = [ProjectEntity::class, LayerEntity::class, StrokeEntity::class, CustomBrushEntity::class, BrushFolderEntity::class],
-    version = 20,
+    version = 24,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

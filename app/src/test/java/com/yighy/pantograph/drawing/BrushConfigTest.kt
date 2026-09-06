@@ -73,12 +73,72 @@ class BrushConfigTest {
             preset.copy(velocitySize = 0.3f),
             preset.copy(velocityFlow = 0.3f),
             preset.copy(velocityScatter = 0.3f),
-            preset.copy(sizeMultiplier = 2f)
+            preset.copy(sizeMultiplier = 2f),
+            preset.copy(tipShape = TipShape.Square),
+            preset.copy(tipRatio = 0.4f),
+            preset.copy(antiAlias = false),
+            preset.copy(hueJitter = 0.2f),
+            preset.copy(saturationJitter = 0.2f),
+            preset.copy(valueJitter = 0.2f),
+            preset.copy(smudge = 0.6f),
+            preset.copy(smudgeLength = 0.9f)
         )
         assertTrue(
             "a parameter was added without a case here: ${fields.size} fields, ${nudged.size} cases",
             nudged.size == fields.size
         )
         nudged.forEach { assertFalse(it.paintsSameAs(preset)) }
+    }
+
+    @Test
+    fun `toBrushConfig carries every parameter out of the state`() {
+        // The gap that let tip shape and ratio through: BrushConfig gained them, the nudge test
+        // above covered them, and nothing checked that the conversion from the brush in hand
+        // actually reads them. It is the conversion the studio compares against to decide
+        // whether a preset has unsaved changes, and keys its preview on - so a parameter missing
+        // here is a control that silently does nothing.
+        val loaded = DrawingState(
+            selectedWidth = 33f,
+            brushSoftness = 0.31f,
+            brushOpacity = 0.32f,
+            brushFlow = 0.33f,
+            brushSpacing = 0.34f,
+            brushSmoothing = 0.35f,
+            brushRotation = 36f,
+            brushRotationJitter = 37f,
+            sizeJitter = 0.38f,
+            scatterJitter = 0.39f,
+            flowJitter = 0.4f,
+            rotationFollow = 0.41f,
+            brushTipUri = "tip",
+            brushTextureUri = "texture",
+            velocityEnabled = true,
+            velocitySizeAmount = 0.42f,
+            velocityFlowAmount = 0.43f,
+            velocityScatterAmount = 0.44f,
+            sizeMultiplier = 2.5f,
+            tipShape = TipShape.Square,
+            tipRatio = 0.45f,
+            antiAlias = false,
+            hueJitter = 0.46f,
+            saturationJitter = 0.47f,
+            valueJitter = 0.48f,
+            smudge = 0.49f,
+            smudgeLength = 0.9f
+        )
+
+        val converted = loaded.toBrushConfig()
+        val defaults = BrushConfig()
+        val identityFields = setOf("id", "name", "folderId")
+
+        BrushConfig::class.java.declaredFields
+            .filterNot { it.name in identityFields || it.name.startsWith("$") }
+            .forEach { field ->
+                field.isAccessible = true
+                assertTrue(
+                    "${field.name} came out of the state at its default - the conversion drops it",
+                    field.get(converted) != field.get(defaults)
+                )
+            }
     }
 }

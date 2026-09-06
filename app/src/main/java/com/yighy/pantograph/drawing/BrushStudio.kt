@@ -289,20 +289,11 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                                 val wPx = constraints.maxWidth
                                 val hPx = constraints.maxHeight
                                 // Keyed on the whole brush rather than a list of its parameters:
-                                // BrushConfig is a data class, so one added later joins the key
-                                // on its own. Spelling the fields out is how the size multiplier
-                                // came to move the slider without ever redrawing the preview.
-                                //
-                                // Colour and the decoded assets are keyed alongside it because
-                                // the config carries neither - it holds the tip and texture as
-                                // uris, and the preview needs to redraw when their pixels land.
-                                val previewKey = listOf(
-                                    uiState.toBrushConfig(),
-                                    uiState.selectedColor,
-                                    uiState.brushTipBitmap,
-                                    uiState.brushTextureMask,
-                                    wPx, hPx
-                                )
+                                // See DrawingState.brushRenderKey for what it covers and why
+                                // it is not spelled out here. Listing the fields at this call
+                                // site is how the size multiplier came to move its slider
+                                // without ever redrawing the preview.
+                                val previewKey = listOf(uiState.brushRenderKey, wPx, hPx)
                                 val previewBitmap = remember(previewKey) {
                                     if (wPx > 0 && hPx > 0) viewModel.renderBrushPreview(wPx, hPx) else null
                                 }
@@ -319,9 +310,9 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                 }
             }
 
-            // Core Properties
+            // Tip: what one stamp looks like before it is laid down anywhere.
             item {
-                StudioSection(title = "Core Properties", icon = Icons.Rounded.Brush) {
+                StudioSection(title = "Tip", icon = Icons.Rounded.Brush) {
                     DrawingSettingRow("Size", "${uiState.selectedWidth.toInt()}px", uiState.selectedWidth, { viewModel.selectWidth(it) }, 1f..300f)
                     // Sits directly under Size because it scales it: the readout shows the
                     // multiplier, and the size row above still shows the size being multiplied.
@@ -342,28 +333,127 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         },
                         range = 0f..1f
                     )
-                    DrawingSettingRow("Opacity", "${(uiState.brushOpacity * 100).toInt()}%", uiState.brushOpacity, { viewModel.setBrushOpacity(it) }, 0f..1f)
-                    DrawingSettingRow("Flow", "${(uiState.brushFlow * 100).toInt()}%", uiState.brushFlow, { viewModel.setBrushFlow(it) }, 0f..1f)
+
+                    // Shape, ratio and anti-aliasing are all greyed out under a custom tip,
+                    // which brings its own outline and proportions: the built-in stamp is the
+                    // only thing they describe.
+                    val builtInTip = uiState.brushTipUri == null
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Shape",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (builtInTip) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                            modifier = Modifier.weight(1f)
+                        )
+                        TipShape.entries.forEach { shape ->
+                            FilterChip(
+                                selected = uiState.tipShape == shape,
+                                enabled = builtInTip,
+                                onClick = { viewModel.setTipShape(shape) },
+                                label = { Text(shape.name, style = MaterialTheme.typography.labelSmall) }
+                            )
+                        }
+                    }
+
+                    // Animated height rather than AnimatedVisibility: this Column spaces its
+                    // children, and a collapsing AnimatedVisibility holds its gap open until
+                    // the exit ends. Same reasoning as the velocity block further down.
+                    Column(modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition)) {
+                        if (builtInTip) {
+                            // Shown as the short axis over the long one, the way it is stored, so
+                            // the number on screen is the number a preset carries.
+                            DrawingSettingRow(
+                                "Ratio",
+                                String.format("%.2f", uiState.tipRatio),
+                                uiState.tipRatio,
+                                { viewModel.setTipRatio(it) },
+                                0.05f..1f
+                            )
+                        }
+                    }
+
                     DrawingSettingRow("Softness", "${(uiState.brushSoftness * 100).toInt()}%", uiState.brushSoftness, { viewModel.setBrushSoftness(it) }, 0f..1f)
+                    DrawingSettingRow("Rotation", "${uiState.brushRotation.toInt()}\u00B0", uiState.brushRotation, { viewModel.setBrushRotation(it) }, 0f..360f)
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Anti-aliasing", style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                "Off gives hard, stepped edges. Softness has no effect without it",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                        Switch(
+                            checked = uiState.antiAlias,
+                            enabled = builtInTip,
+                            onCheckedChange = { viewModel.setAntiAlias(it) }
+                        )
+                    }
+                }
+            }
+
+            // Stroke: how those stamps are laid along the path.
+            item {
+                StudioSection(title = "Stroke", icon = Icons.Rounded.Gesture) {
+                    DrawingSettingRow("Spacing", "${(uiState.brushSpacing * 100).toInt()}%", uiState.brushSpacing, { viewModel.setBrushSpacing(it) }, 0.01f..4f)
+                    DrawingSettingRow("Flow", "${(uiState.brushFlow * 100).toInt()}%", uiState.brushFlow, { viewModel.setBrushFlow(it) }, 0f..1f)
+                    DrawingSettingRow("Opacity", "${(uiState.brushOpacity * 100).toInt()}%", uiState.brushOpacity, { viewModel.setBrushOpacity(it) }, 0f..1f)
+                    DrawingSettingRow("Follow Direction", "${(uiState.rotationFollow * 100).toInt()}%", uiState.rotationFollow, { viewModel.setRotationFollow(it) }, 0f..1f)
+                    // Steadies the cursor rather than the stamp, which is why it alone leaves
+                    // the preview above unchanged - that draws a path it was given.
                     DrawingSettingRow("Smoothing", "${(uiState.brushSmoothing * 100).toInt()}%", uiState.brushSmoothing, { viewModel.setBrushSmoothing(it) }, 0f..1f)
                 }
             }
 
-            // Dynamics & Jitter
+            // Jitter: the same brush, varied per stamp. Shape first, then colour - they read
+            // as two groups and were interleaved once already.
             item {
-                StudioSection(title = "Dynamics", icon = Icons.Rounded.Tune) {
-                    DrawingSettingRow("Spacing", "${(uiState.brushSpacing * 100).toInt()}%", uiState.brushSpacing, { viewModel.setBrushSpacing(it) }, 0.01f..4f)
-                    DrawingSettingRow("Rotation", "${uiState.brushRotation.toInt()}\u00B0", uiState.brushRotation, { viewModel.setBrushRotation(it) }, 0f..360f)
+                StudioSection(title = "Jitter", icon = Icons.Rounded.Grain) {
+                    DrawingSettingRow("Size", "${(uiState.sizeJitter * 100).toInt()}%", uiState.sizeJitter, { viewModel.setSizeJitter(it) }, 0f..1f)
+                    DrawingSettingRow("Rotation", "${(uiState.brushRotationJitter * 100).toInt()}%", uiState.brushRotationJitter, { viewModel.setRotationJitter(it) }, 0f..1f)
+                    DrawingSettingRow("Scatter", "${(uiState.scatterJitter * 100).toInt()}%", uiState.scatterJitter, { viewModel.setScatterJitter(it) }, 0f..1f)
+                    DrawingSettingRow("Flow", "${(uiState.flowJitter * 100).toInt()}%", uiState.flowJitter, { viewModel.setFlowJitter(it) }, 0f..1f)
 
-                    DrawingSettingRow("Follow Direction", "${(uiState.rotationFollow * 100).toInt()}%", uiState.rotationFollow, { viewModel.setRotationFollow(it) }, 0f..1f)
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                    DrawingSettingRow("Size Jitter", "${(uiState.sizeJitter * 100).toInt()}%", uiState.sizeJitter, { viewModel.setSizeJitter(it) }, 0f..1f)
-                    DrawingSettingRow("Rotation Jitter", "${uiState.brushRotationJitter.toInt()}\u00B0", uiState.brushRotationJitter, { viewModel.setRotationJitter(it) }, 0f..180f)
-                    DrawingSettingRow("Scatter Jitter", "${(uiState.scatterJitter * 100).toInt()}%", uiState.scatterJitter, { viewModel.setScatterJitter(it) }, 0f..1f)
-                    DrawingSettingRow("Flow Jitter", "${(uiState.flowJitter * 100).toInt()}%", uiState.flowJitter, { viewModel.setFlowJitter(it) }, 0f..1f)
+                    // Small values are the useful ones: hue spans the whole wheel at 100%.
+                    DrawingSettingRow("Hue", "${(uiState.hueJitter * 100).toInt()}%", uiState.hueJitter, { viewModel.setHueJitter(it) }, 0f..1f)
+                    DrawingSettingRow("Saturation", "${(uiState.saturationJitter * 100).toInt()}%", uiState.saturationJitter, { viewModel.setSaturationJitter(it) }, 0f..1f)
+                    DrawingSettingRow("Value", "${(uiState.valueJitter * 100).toInt()}%", uiState.valueJitter, { viewModel.setValueJitter(it) }, 0f..1f)
+                }
+            }
 
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column(modifier = Modifier.weight(1f)) {
+            // Smudge: the one thing here that reads the canvas instead of painting onto it.
+            item {
+                StudioSection(title = "Smudge", icon = Icons.Rounded.Colorize) {
+                    DrawingSettingRow("Amount", "${(uiState.smudge * 100).toInt()}%", uiState.smudge, { viewModel.setSmudge(it) }, 0f..1f)
+                    Column(modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition)) {
+                        if (uiState.smudge > 0f) {
+                            DrawingSettingRow("Length", "${(uiState.smudgeLength * 100).toInt()}%", uiState.smudgeLength, { viewModel.setSmudgeLength(it) }, 0f..1f)
+                        }
+                    }
+                }
+            }
+
+            // Velocity: everything that answers to how fast the stroke is moving.
+            item {
+                StudioSection(title = "Velocity", icon = Icons.Rounded.Tune) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
                             Text("Velocity Dynamics", style = MaterialTheme.typography.titleMedium)
                             Text("React to stroke speed", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -380,9 +470,9 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         if (uiState.velocityEnabled) {
-                            DrawingSettingRow("Velocity Size", "${if (uiState.velocitySizeAmount > 0) "+" else ""}${(uiState.velocitySizeAmount * 100).toInt()}%", uiState.velocitySizeAmount, { viewModel.setVelocitySize(it) }, -2f..2f)
-                            DrawingSettingRow("Velocity Flow", "${if (uiState.velocityFlowAmount > 0) "+" else ""}${(uiState.velocityFlowAmount * 100).toInt()}%", uiState.velocityFlowAmount, { viewModel.setVelocityFlow(it) }, -2f..2f)
-                            DrawingSettingRow("Velocity Scatter", "${if (uiState.velocityScatterAmount > 0) "+" else ""}${(uiState.velocityScatterAmount * 100).toInt()}%", uiState.velocityScatterAmount, { viewModel.setVelocityScatter(it) }, -2f..2f)
+                            DrawingSettingRow("Size", "${if (uiState.velocitySizeAmount > 0) "+" else ""}${(uiState.velocitySizeAmount * 100).toInt()}%", uiState.velocitySizeAmount, { viewModel.setVelocitySize(it) }, -2f..2f)
+                            DrawingSettingRow("Flow", "${if (uiState.velocityFlowAmount > 0) "+" else ""}${(uiState.velocityFlowAmount * 100).toInt()}%", uiState.velocityFlowAmount, { viewModel.setVelocityFlow(it) }, -2f..2f)
+                            DrawingSettingRow("Scatter", "${if (uiState.velocityScatterAmount > 0) "+" else ""}${(uiState.velocityScatterAmount * 100).toInt()}%", uiState.velocityScatterAmount, { viewModel.setVelocityScatter(it) }, -2f..2f)
                         }
                     }
                 }

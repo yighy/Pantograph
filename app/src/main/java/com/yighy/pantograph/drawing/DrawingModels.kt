@@ -57,6 +57,13 @@ data class ReferenceImage(
     val bitmap: android.graphics.Bitmap? = null
 )
 
+/**
+ * The shape of the built-in tip, when no custom one is loaded.
+ *
+ * Stored by name, so renaming an entry silently resets every preset that used it.
+ */
+enum class TipShape { Round, Square }
+
 data class BrushConfig(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String = "New Brush",
@@ -80,6 +87,42 @@ data class BrushConfig(
     val velocityScatter: Float = 0f,
     /** Scales [size] past the ceiling of the size slider. 1x paints at the size as set. */
     val sizeMultiplier: Float = 1f,
+    val tipShape: TipShape = TipShape.Round,
+    /**
+     * The short axis as a fraction of the long one. 1 is the shape as named; below that it
+     * squashes into an ellipse or a rectangle.
+     *
+     * This is what makes [rotation] mean anything on a built-in tip: a circle turned is the
+     * same circle, an ellipse turned is a nib.
+     */
+    val tipRatio: Float = 1f,
+    /**
+     * Whether the tip is drawn with smooth edges.
+     *
+     * Off gives a hard, stepped edge - a pixel-art brush. Softness is meaningless there and is
+     * ignored while this is off, since a blur is antialiasing by another name.
+     */
+    val antiAlias: Boolean = true,
+    /**
+     * Per-stamp colour variation, each 0..1.
+     *
+     * Hue spans the whole wheel at 1, saturation and value the whole range - so useful values
+     * are small. This is the difference between a flat mark and one that looks like material:
+     * chalk, foliage and rust are all the same colour repeated with a wobble.
+     */
+    val hueJitter: Float = 0f,
+    val saturationJitter: Float = 0f,
+    val valueJitter: Float = 0f,
+    /**
+     * How much of the colour already on the layer the brush paints with instead of its own.
+     * 0 is an ordinary brush; 1 paints nothing but what it picked up.
+     */
+    val smudge: Float = 0f,
+    /**
+     * How far picked-up colour is carried before it is replaced by what is underneath now.
+     * 0 refreshes at every stamp - a short smear; near 1 drags one colour a long way.
+     */
+    val smudgeLength: Float = 0.5f,
     /** Which folder holds this preset; null means it sits loose at the top level. */
     val folderId: Long? = null
 ) {
@@ -137,8 +180,29 @@ fun DrawingState.toBrushConfig(id: String = "", name: String = ""): BrushConfig 
     velocitySize = velocitySizeAmount,
     velocityFlow = velocityFlowAmount,
     velocityScatter = velocityScatterAmount,
-    sizeMultiplier = sizeMultiplier
+    sizeMultiplier = sizeMultiplier,
+    tipShape = tipShape,
+    tipRatio = tipRatio,
+    antiAlias = antiAlias,
+    hueJitter = hueJitter,
+    saturationJitter = saturationJitter,
+    valueJitter = valueJitter,
+    smudge = smudge,
+    smudgeLength = smudgeLength
 )
+
+/**
+ * Everything a rendering of the current brush depends on, for callers that cache one.
+ *
+ * Lives here, beside [toBrushConfig], because that is the only place where forgetting it is
+ * hard: a new brush parameter lands in [BrushConfig] and is carried by the conversion, which
+ * is test-enforced to be complete, so it arrives here without anyone remembering to add it.
+ * The three extras are the things a preset deliberately does not carry - the colour, and the
+ * decoded pixels of a tip and a texture the config holds only as uris. Those are structural,
+ * and an addition to them is rare enough to be worth noticing.
+ */
+val DrawingState.brushRenderKey: Any
+    get() = listOf(toBrushConfig(), selectedColor, brushTipBitmap, brushTextureMask)
 
 data class DrawingState(
     val projectId: Long = -1,
@@ -182,6 +246,15 @@ data class DrawingState(
     /** 0 = the stamp keeps its fixed angle, 1 = it fully follows the path. */
     val rotationFollow: Float = 0f,
     val brushTipUri: String? = null,
+    val tipShape: TipShape = TipShape.Round,
+    /** Short axis over long axis for the built-in tip; see [BrushConfig.tipRatio]. */
+    val tipRatio: Float = 1f,
+    val antiAlias: Boolean = true,
+    val hueJitter: Float = 0f,
+    val saturationJitter: Float = 0f,
+    val valueJitter: Float = 0f,
+    val smudge: Float = 0f,
+    val smudgeLength: Float = 0.5f,
     val brushTipBitmap: android.graphics.Bitmap? = null,
     val brushTextureUri: String? = null,
     val brushTextureBitmap: android.graphics.Bitmap? = null,
