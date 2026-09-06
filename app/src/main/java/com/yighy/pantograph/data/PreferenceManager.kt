@@ -31,6 +31,7 @@ class PreferenceManager(private val context: Context) {
         val DYNAMIC_COLOR_KEY = booleanPreferencesKey("dynamic_color")
         val FILL_TOLERANCE_KEY = floatPreferencesKey("fill_tolerance")
         val FILL_GROW_KEY = floatPreferencesKey("fill_grow")
+        val DEFAULT_BRUSHES_SEEDED_KEY = booleanPreferencesKey("default_brushes_seeded")
         val ROTATION_JITTER_KEY = floatPreferencesKey("rotation_jitter")
         val VELOCITY_SIZE_KEY = floatPreferencesKey("velocity_size")
         val VELOCITY_FLOW_KEY = floatPreferencesKey("velocity_flow")
@@ -201,6 +202,19 @@ class PreferenceManager(private val context: Context) {
     val fillGrow: Flow<Float> = context.dataStore.data.map { it[FILL_GROW_KEY] ?: 2f }.distinctUntilChanged()
 
     suspend fun setFillGrow(v: Float) { context.dataStore.edit { it[FILL_GROW_KEY] = v } }
+
+    /**
+     * Whether the starter presets have been installed.
+     *
+     * A flag rather than "is the brush library empty": someone who deletes all nine of them has
+     * said what they want, and finding them back at the next launch would be the app arguing.
+     */
+    val defaultBrushesSeeded: Flow<Boolean> =
+        context.dataStore.data.map { it[DEFAULT_BRUSHES_SEEDED_KEY] ?: false }.distinctUntilChanged()
+
+    suspend fun setDefaultBrushesSeeded(done: Boolean) {
+        context.dataStore.edit { it[DEFAULT_BRUSHES_SEEDED_KEY] = done }
+    }
 
     val scatterJitter: Flow<Float> = context.dataStore.data.map { preferences ->
         preferences[SCATTER_JITTER_KEY] ?: 0f

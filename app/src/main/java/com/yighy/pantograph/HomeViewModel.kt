@@ -3,7 +3,10 @@ package com.yighy.pantograph
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yighy.pantograph.data.ProjectEntity
+import com.yighy.pantograph.data.BrushFolderEntity
+import com.yighy.pantograph.data.PreferenceManager
 import com.yighy.pantograph.data.ProjectRepository
+import com.yighy.pantograph.drawing.DefaultBrushes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,13 +19,31 @@ import java.io.File
 class HomeViewModel(
     private val repository: ProjectRepository,
     /** Where the drawing screen keeps layer pixels and thumbnails, so deletes can reclaim them. */
-    private val internalFilesDir: File
+    private val internalFilesDir: File,
+    private val preferenceManager: PreferenceManager
 ) : ViewModel() {
     val projects: StateFlow<List<ProjectEntity>> = repository.allProjects
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     init {
         sweepOrphanedFiles()
+        seedDefaultBrushes()
+    }
+
+    /**
+     * Installs the starter presets, once ever.
+     *
+     * Here rather than in the drawing screen because it should have happened before the first
+     * project is opened - a brush library that fills itself in behind you the first time you
+     * reach for it is worse than one that was always there.
+     */
+    private fun seedDefaultBrushes() {
+        viewModelScope.launch {
+            if (preferenceManager.defaultBrushesSeeded.first()) return@launch
+            val folderId = repository.insertBrushFolder(BrushFolderEntity(name = DefaultBrushes.FOLDER_NAME))
+            DefaultBrushes.entities(folderId).forEach { repository.insertCustomBrush(it) }
+            preferenceManager.setDefaultBrushesSeeded(true)
+        }
     }
 
     /**
