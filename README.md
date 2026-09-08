@@ -62,6 +62,7 @@ as you cross a threshold.
 - Bucket fill reaches under the antialiased edge that stopped it, so no unfilled hem is left hugging the outline.
 - Lazy/rope mode for extra-smooth curves.
 - Recoil: the cursor springs back to where each stroke began, so the next mark is offset from somewhere meaningful.
+- Fine: Draw Sensitivity applies to the raised pen too, so the scale never changes under the finger and the cursor can be placed as precisely as it draws.
 - Selection: lasso, rectangle, magic wand, colour select — move, transform, duplicate, invert.
 - A lifted selection survives a layer change, so it can be pasted into another layer.
 - Active selections clip every tool.
