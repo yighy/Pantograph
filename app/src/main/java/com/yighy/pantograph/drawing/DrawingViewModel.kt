@@ -502,7 +502,12 @@ class DrawingViewModel(
             // began leaves the next mark to be measured from somewhere meaningful, instead of
             // from the far end of the one just made - which is nowhere in particular.
             if (state.isRecoilActive) {
-                strokeStartAnchor?.let { history.glideCursorTo(it, durationMs = RECOIL_MS) }
+                // Does not yield to cursor movement: the hand that was steering is still on
+                // the screen at pen-up, and its next move used to cancel this before it had
+                // travelled anywhere.
+                strokeStartAnchor?.let {
+                    history.glideCursorTo(it, durationMs = RECOIL_MS, yieldsToMovement = false)
+                }
             }
             strokeStartAnchor = null
             commitStrokeToLayer()

@@ -39,6 +39,16 @@ class HistoryCoordinator(
     private var cursorJob: Job? = null
 
     /**
+     * Whether the glide in flight gives way to the user driving the cursor.
+     *
+     * Undo's does: it runs while nothing else is happening, so a finger arriving means the user
+     * wants control back. Recoil's must not. The finger steering the cursor is usually still
+     * down when the pen comes up - not having to lift it is the whole gesture - so its next
+     * move is not somebody taking over, it is the same movement that was already under way.
+     */
+    private var glideYieldsToMovement = true
+
+    /**
      * Where an undone stroke goes when it is being kept. Assigned by the ViewModel rather than
      * injected: leaving the trace needs the layer controller, which needs this class to exist
      * first, and no construction order satisfies both.
@@ -134,6 +144,10 @@ class HistoryCoordinator(
      * off the line they are drawing.
      */
     fun cancelCursorGlide() {
+        // A recoil glide holds its ground; see glideYieldsToMovement. Without this it was
+        // cancelled by the very finger it was meant to run alongside - which is why the cursor
+        // came back when the hand had stopped, and stayed put when it had not.
+        if (!glideYieldsToMovement && cursorJob?.isActive == true) return
         cursorJob?.cancel()
         cursorJob = null
     }
@@ -144,10 +158,15 @@ class HistoryCoordinator(
      * Public because undo is no longer the only caller: the recoil setting sends the cursor
      * back to where a stroke began every time the pen comes up, which is the same motion for a
      * different reason. It takes its own duration because it happens far more often - once per
-     * stroke rather than once in a while.
+     * stroke rather than once in a while, and its own [yieldsToMovement] because the hand it
+     * runs under is a moving one.
+     *
+     * A later call replaces an earlier glide whatever either asked for: undo pressed during a
+     * recoil is a new instruction, not a finger carrying on.
      */
-    fun glideCursorTo(anchor: CursorAnchor, durationMs: Long = 150L) {
+    fun glideCursorTo(anchor: CursorAnchor, durationMs: Long = 150L, yieldsToMovement: Boolean = true) {
         cursorJob?.cancel()
+        glideYieldsToMovement = yieldsToMovement
         cursorJob = scope.launch(Dispatchers.Main) {
             val fromCursor = session.value.cursorPosition
             val fromBrush = session.value.brushPosition
