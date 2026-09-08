@@ -636,9 +636,12 @@ private fun ToolsMenuButton(
 ) {
     var showTools by remember { mutableStateOf(false) }
     val pinnedTools by remember(viewModel) { viewModel.uiState.map { it.pinnedTools }.distinctUntilChanged() }.collectAsState(emptyList())
+    // Collected here rather than hoisted with its neighbours: this menu is the only thing that
+    // reads it, and the chip row builds itself from PinnableTool.isActive.
+    val isFineCursor by remember(viewModel) { viewModel.uiState.map { it.isFineCursor }.distinctUntilChanged() }.collectAsState(false)
     val isBucketFill = drawingMode is DrawingMode.BucketFill
     val isSelectionMode = drawingMode.isSelectionTool()
-    val isActive = showTools || isBucketFill || isLazyModeActive || isRecoilActive || isSelectionMode || drawingMode is DrawingMode.Gradient
+    val isActive = showTools || isBucketFill || isLazyModeActive || isRecoilActive || isFineCursor || isSelectionMode || drawingMode is DrawingMode.Gradient
 
     Box {
         IconButton(
@@ -739,6 +742,14 @@ private fun ToolsMenuButton(
                         onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Recoil) }
                     ) {
                         viewModel.toggleRecoil()
+                        showTools = false
+                    }
+                    ExtraToolItem(
+                        "Fine", isFineCursor, Icons.Rounded.CenterFocusStrong,
+                        isPinned = pinnedTools.contains(PinnableTool.Fine),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Fine) }
+                    ) {
+                        viewModel.toggleFineCursor()
                         showTools = false
                     }
                 }

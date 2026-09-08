@@ -1202,6 +1202,11 @@ class DrawingViewModel(
     }
 
     /** Arms or disarms the cursor springing back to each stroke's starting point. */
+    /** Hands Draw Sensitivity the raised pen as well, instead of only the drawing one. */
+    fun toggleFineCursor() {
+        session.update { it.copy(isFineCursor = !it.isFineCursor) }
+    }
+
     fun toggleRecoil() {
         session.update { it.copy(isRecoilActive = !it.isRecoilActive) }
     }

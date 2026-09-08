@@ -299,6 +299,17 @@ data class DrawingState(
      */
     val isRecoilActive: Boolean = false,
     /**
+     * Extends Draw Sensitivity to the raised pen, rather than letting it bite only while drawing.
+     *
+     * Two things come with that. The scale stops changing under the finger at pen-down; and
+     * placing the cursor becomes precision work at all, where before you approached a target at
+     * full speed and the mapping changed the moment you pressed.
+     *
+     * Not persisted, like [isRecoilActive]: which of the two a drawing wants changes within a
+     * drawing, not between them.
+     */
+    val isFineCursor: Boolean = false,
+    /**
      * Everything but the button, its satellites and the readout chips is hidden.
      *
      * Not persisted, deliberately: reopening a project already stripped of its controls, with

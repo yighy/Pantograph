@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Cable
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.ui.graphics.vector.ImageVector
 
 /**
@@ -36,6 +37,15 @@ enum class PinnableTool(
     Lazy("Lazy", Icons.Rounded.Cable, opensSettings = true),
     Recoil("Recoil", Icons.Rounded.Replay),
     /**
+     * Puts the raised cursor on Draw Sensitivity too, so the scale never changes under the
+     * finger at pen-down.
+     *
+     * A toggle rather than a permanent behaviour because it is paid for in finger travel:
+     * crossing the canvas at 0.2x is a lot of wiping, and that is a price worth paying for the
+     * detail work and not for getting to it.
+     */
+    Fine("Fine", Icons.Rounded.CenterFocusStrong),
+    /**
      * Pinnable like the rest, which is what gives it a way *out*: the readout row draws every
      * armed tool with a cross on it, and that cross is the only control left on screen.
      */
@@ -58,6 +68,7 @@ enum class PinnableTool(
         Gradient -> state.drawingMode is DrawingMode.Gradient
         Lazy -> state.isLazyModeActive
         Recoil -> state.isRecoilActive
+        Fine -> state.isFineCursor
         Fullscreen -> state.isFullscreen
         Lasso -> state.drawingMode is DrawingMode.SelectLasso
         Rect -> state.drawingMode is DrawingMode.SelectRect
@@ -81,6 +92,7 @@ enum class PinnableTool(
             Fill -> viewModel.setBucketFillMode()
             Lazy -> viewModel.toggleLazyMode()
             Recoil -> viewModel.toggleRecoil()
+            Fine -> viewModel.toggleFineCursor()
             Fullscreen -> viewModel.toggleFullscreen()
             Gradient -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.Gradient)
             Lasso -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectLasso)

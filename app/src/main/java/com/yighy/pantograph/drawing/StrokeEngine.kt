@@ -190,8 +190,9 @@ class StrokeEngine {
 
     /**
      * Feeds one pointer delta in and returns the canvas-space movement to apply to the cursor.
-     * Sensitivity and stroke smoothing only bite while the pen is down - a raised pen tracks the
-     * finger one-to-one. Also advances the smoothed speed the velocity dynamics read.
+     * Stroke smoothing only bites while the pen is down, and so does sensitivity - unless the
+     * Fine tool extends it to the raised pen as well. Also advances the smoothed speed the
+     * velocity dynamics read.
      */
     fun smoothMovement(delta: Offset, state: DrawingState): Offset {
         // Engaged, not down: Draw Sensitivity is about precision work, and steering a path
@@ -199,7 +200,12 @@ class StrokeEngine {
         // are aiming at something already on the canvas. Smoothing below stays keyed to the
         // pen, because it shapes a line; on a handle it would only put lag between the finger
         // and the point it is meant to be placing.
-        val sensitivity = if (state.isPenEngaged) state.cursorSensitivity else 1.0f
+        //
+        // The Fine tool hands it the raised pen too, so the scale never changes underneath the
+        // finger. That is also the only way to place the cursor precisely: aiming at something
+        // already on the canvas is precision work whether or not the pen happens to be down.
+        val sensitivity =
+            if (state.isPenEngaged || state.isFineCursor) state.cursorSensitivity else 1.0f
         val targetVelocity = delta * sensitivity
 
         val smoothingFactor = if (state.isPenDown) {

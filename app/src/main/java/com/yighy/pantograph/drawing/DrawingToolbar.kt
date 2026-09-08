@@ -892,6 +892,7 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
     val fillTolerance by remember(viewModel) { viewModel.uiState.map { it.fillTolerance }.distinctUntilChanged() }.collectAsState(10f)
     val fillGrow by remember(viewModel) { viewModel.uiState.map { it.fillGrow }.distinctUntilChanged() }.collectAsState(2f)
     val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
+    val isFineCursor by remember(viewModel) { viewModel.uiState.map { it.isFineCursor }.distinctUntilChanged() }.collectAsState(false)
     val lazyRadius by remember(viewModel) { viewModel.uiState.map { it.lazyRadius }.distinctUntilChanged() }.collectAsState(50f)
 
     Column {
@@ -903,7 +904,16 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
             modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            SettingRow("Draw Sensitivity", "${"%.1f".format(cursorSensitivity)}x", cursorSensitivity, { viewModel.setCursorSensitivity(it) }, 0.1f..1.0f)
+            // The label follows the tool rather than staying put: with Fine armed this is no
+            // longer a setting about drawing, it is what the cursor does at all times, and this
+            // row is the only place that says so.
+            SettingRow(
+                if (isFineCursor) "Cursor Sensitivity" else "Draw Sensitivity",
+                "${"%.1f".format(cursorSensitivity)}x",
+                cursorSensitivity,
+                { viewModel.setCursorSensitivity(it) },
+                0.1f..1.0f
+            )
             
             if (isLazyModeActive) {
                 SettingRow("Lazy Radius", "${lazyRadius.toInt()}px", lazyRadius, { viewModel.setLazyRadius(it) }, 10f..500f)
