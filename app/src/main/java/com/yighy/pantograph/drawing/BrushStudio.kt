@@ -50,11 +50,20 @@ import coil.compose.AsyncImage
 import com.yighy.pantograph.data.LayerEntity
 import com.yighy.pantograph.data.PreferenceManager
 import com.yighy.pantograph.ui.theme.MotionTokens
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+/**
+ * How long the brush has to hold still before the preview is redrawn.
+ *
+ * Long enough that a slider drag asks for one render instead of one per frame, short enough
+ * that letting go and looking reads as immediate.
+ */
+private const val PREVIEW_SETTLE_MS = 90L
 
 @Composable
 fun AdvancedBrushStudioWrapper(viewModel: DrawingViewModel, onDismiss: () -> Unit) {
@@ -294,8 +303,20 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                                 // site is how the size multiplier came to move its slider
                                 // without ever redrawing the preview.
                                 val previewKey = listOf(uiState.brushRenderKey, wPx, hPx)
-                                val previewBitmap = remember(previewKey) {
-                                    if (wPx > 0 && hPx > 0) viewModel.renderBrushPreview(wPx, hPx) else null
+                                // Produced by an effect rather than from inside remember, which
+                                // put it in the composition phase: this walks the real stamp
+                                // engine for sixty stamps into a full-width bitmap, so every
+                                // frame of a slider drag had to wait for a whole demo stroke
+                                // before it could be laid out - worst on the large soft brushes,
+                                // whose stamp is rebuilt on each new size as well.
+                                //
+                                // The wait collapses a drag into one render per pause. It is
+                                // skipped for the very first one, which has no drag to collapse
+                                // and would otherwise show an empty panel on the way in.
+                                val previewBitmap by produceState<android.graphics.Bitmap?>(null, previewKey) {
+                                    if (wPx <= 0 || hPx <= 0) return@produceState
+                                    if (value != null) delay(PREVIEW_SETTLE_MS)
+                                    value = viewModel.renderBrushPreview(wPx, hPx)
                                 }
                                 previewBitmap?.let {
                                     Image(
