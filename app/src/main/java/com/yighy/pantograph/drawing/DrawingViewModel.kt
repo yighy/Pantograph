@@ -10,6 +10,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.IntSize
+import androidx.datastore.preferences.core.Preferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.yighy.pantograph.data.LayerEntity
@@ -20,14 +21,26 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.io.File
+
+/**
+ * How long a brush setting has to hold still before it is written to the preference store.
+ *
+ * Long enough that a slider drag costs one write instead of one per frame, short enough that
+ * nothing is at risk in the gap: a setting is already live in [DrawingSession] the moment it
+ * changes, and the wait only governs when it reaches disk.
+ */
+private const val PREFERENCE_SETTLE_MS = 250L
 
 /**
  * Coordinates one open project.
@@ -1017,11 +1030,6 @@ class DrawingViewModel(
     // ============================ Brush settings ============================
 
     /**
-     * Applies a brush-related state change and persists it as the project's last-used brush
-     * setting. [persistPreference] is used by the handful of settings that are also saved as a
-     * global default (via [preferenceManager]) rather than just per-project.
-     */
-    /**
      * Applies a setting that genuinely belongs to this project, and schedules its row.
      *
      * Only the colour and the cursor feel are left in this category. Every brush property is a
@@ -1035,35 +1043,87 @@ class DrawingViewModel(
         persistence.scheduleProjectSettingsSave()
     }
 
-    /** Applies a brush setting, which is stored as a global default rather than per project. */
-    private fun updatePreference(persist: suspend () -> Unit, update: (DrawingState) -> DrawingState) {
+    /**
+     * Preference writes waiting out [PREFERENCE_SETTLE_MS], the newest one per store key.
+     *
+     * A slider calls its setter once per frame, and each of those was a DataStore edit - which
+     * rewrites and fsyncs the whole preference file. Sixty of those a second is work the drag
+     * has to share the device with. Keyed on the row each one lands in, so the newest value of
+     * a setting replaces the pending one instead of queueing behind it, and two settings moved
+     * in the same breath can't displace each other.
+     */
+    private val pendingPreferences = mutableMapOf<Preferences.Key<*>, suspend () -> Unit>()
+    private var preferenceFlushJob: Job? = null
+
+    /**
+     * Holds [persist] until the setting stops moving.
+     *
+     * Restarted on each change rather than left to tick, so a slider that has settled is
+     * written promptly while one still under the thumb is not written at all.
+     */
+    private fun persistPreference(key: Preferences.Key<*>, persist: suspend () -> Unit) {
+        synchronized(pendingPreferences) { pendingPreferences[key] = persist }
+        preferenceFlushJob?.cancel()
+        // persistScope, not viewModelScope: see flushPreferences at onCleared.
+        preferenceFlushJob = persistScope.launch {
+            delay(PREFERENCE_SETTLE_MS)
+            flushPreferences()
+        }
+    }
+
+    /**
+     * Writes everything still waiting.
+     *
+     * NonCancellable because the next change cancels this job to restart the wait: a flush
+     * caught halfway through would have emptied the map of writes it never made, and the
+     * setting they carried would be gone.
+     */
+    private suspend fun flushPreferences() = withContext(NonCancellable) {
+        val due = synchronized(pendingPreferences) {
+            pendingPreferences.values.toList().also { pendingPreferences.clear() }
+        }
+        due.forEach { it() }
+    }
+
+    /**
+     * Applies a brush setting, which is stored as a global default rather than per project.
+     *
+     * [key] is the row the write lands in, and is what the pending write is filed under - so it
+     * is the store's own key rather than a name invented here, which two settings could collide
+     * on without anything noticing.
+     */
+    private fun updatePreference(
+        key: Preferences.Key<*>,
+        persist: suspend () -> Unit,
+        update: (DrawingState) -> DrawingState
+    ) {
         session.update(update)
-        viewModelScope.launch { persist() }
+        persistPreference(key, persist)
     }
 
     fun selectColor(color: Color) = updateProjectSetting { it.copy(selectedColor = color, isEyeDropperMode = false) }
 
-    fun selectWidth(width: Float) = updatePreference({ preferenceManager.setBrushSize(width) }) { it.copy(selectedWidth = width) }
+    fun selectWidth(width: Float) = updatePreference(PreferenceManager.BRUSH_SIZE_KEY, { preferenceManager.setBrushSize(width) }) { it.copy(selectedWidth = width) }
 
-    fun setBrushSoftness(softness: Float) = updatePreference({ preferenceManager.setBrushSoftness(softness) }) { it.copy(brushSoftness = softness) }
+    fun setBrushSoftness(softness: Float) = updatePreference(PreferenceManager.BRUSH_SOFTNESS_KEY, { preferenceManager.setBrushSoftness(softness) }) { it.copy(brushSoftness = softness) }
 
-    fun setBrushSmoothing(smoothing: Float) = updatePreference({ preferenceManager.setBrushSmoothing(smoothing) }) { it.copy(brushSmoothing = smoothing) }
+    fun setBrushSmoothing(smoothing: Float) = updatePreference(PreferenceManager.BRUSH_SMOOTHING_KEY, { preferenceManager.setBrushSmoothing(smoothing) }) { it.copy(brushSmoothing = smoothing) }
 
-    fun setBrushOpacity(opacity: Float) = updatePreference({ preferenceManager.setBrushOpacity(opacity) }) { it.copy(brushOpacity = opacity) }
-    fun setBrushFlow(flow: Float) = updatePreference({ preferenceManager.setBrushFlow(flow) }) { it.copy(brushFlow = flow) }
-    fun setBrushSpacing(spacing: Float) = updatePreference({ preferenceManager.setBrushSpacing(spacing) }) { it.copy(brushSpacing = spacing) }
-    fun setBrushRotation(rotation: Float) = updatePreference({ preferenceManager.setBrushRotation(rotation) }) { it.copy(brushRotation = rotation) }
+    fun setBrushOpacity(opacity: Float) = updatePreference(PreferenceManager.BRUSH_OPACITY_KEY, { preferenceManager.setBrushOpacity(opacity) }) { it.copy(brushOpacity = opacity) }
+    fun setBrushFlow(flow: Float) = updatePreference(PreferenceManager.BRUSH_FLOW_KEY, { preferenceManager.setBrushFlow(flow) }) { it.copy(brushFlow = flow) }
+    fun setBrushSpacing(spacing: Float) = updatePreference(PreferenceManager.BRUSH_SPACING_KEY, { preferenceManager.setBrushSpacing(spacing) }) { it.copy(brushSpacing = spacing) }
+    fun setBrushRotation(rotation: Float) = updatePreference(PreferenceManager.BRUSH_ROTATION_KEY, { preferenceManager.setBrushRotation(rotation) }) { it.copy(brushRotation = rotation) }
 
-    fun setSmudge(v: Float) = updatePreference({ preferenceManager.setSmudge(v) }) { it.copy(smudge = v) }
-    fun setSmudgeLength(v: Float) = updatePreference({ preferenceManager.setSmudgeLength(v) }) { it.copy(smudgeLength = v) }
+    fun setSmudge(v: Float) = updatePreference(PreferenceManager.SMUDGE_KEY, { preferenceManager.setSmudge(v) }) { it.copy(smudge = v) }
+    fun setSmudgeLength(v: Float) = updatePreference(PreferenceManager.SMUDGE_LENGTH_KEY, { preferenceManager.setSmudgeLength(v) }) { it.copy(smudgeLength = v) }
 
-    fun setHueJitter(v: Float) = updatePreference({ preferenceManager.setHueJitter(v) }) { it.copy(hueJitter = v) }
-    fun setSaturationJitter(v: Float) = updatePreference({ preferenceManager.setSaturationJitter(v) }) { it.copy(saturationJitter = v) }
-    fun setValueJitter(v: Float) = updatePreference({ preferenceManager.setValueJitter(v) }) { it.copy(valueJitter = v) }
+    fun setHueJitter(v: Float) = updatePreference(PreferenceManager.HUE_JITTER_KEY, { preferenceManager.setHueJitter(v) }) { it.copy(hueJitter = v) }
+    fun setSaturationJitter(v: Float) = updatePreference(PreferenceManager.SATURATION_JITTER_KEY, { preferenceManager.setSaturationJitter(v) }) { it.copy(saturationJitter = v) }
+    fun setValueJitter(v: Float) = updatePreference(PreferenceManager.VALUE_JITTER_KEY, { preferenceManager.setValueJitter(v) }) { it.copy(valueJitter = v) }
 
-    fun setAntiAlias(on: Boolean) = updatePreference({ preferenceManager.setAntiAlias(on) }) { it.copy(antiAlias = on) }
+    fun setAntiAlias(on: Boolean) = updatePreference(PreferenceManager.ANTI_ALIAS_KEY, { preferenceManager.setAntiAlias(on) }) { it.copy(antiAlias = on) }
 
-    fun setTipShape(shape: TipShape) = updatePreference({ preferenceManager.setTipShape(shape.name) }) { it.copy(tipShape = shape) }
+    fun setTipShape(shape: TipShape) = updatePreference(PreferenceManager.TIP_SHAPE_KEY, { preferenceManager.setTipShape(shape.name) }) { it.copy(tipShape = shape) }
 
     /**
      * Squashes the built-in tip. Never reaches zero: a tip with no width at all has nothing to
@@ -1071,41 +1131,50 @@ class DrawingViewModel(
      */
     fun setTipRatio(ratio: Float) {
         val clamped = ratio.coerceIn(0.05f, 1f)
-        updatePreference({ preferenceManager.setTipRatio(clamped) }) { it.copy(tipRatio = clamped) }
+        updatePreference(PreferenceManager.TIP_RATIO_KEY, { preferenceManager.setTipRatio(clamped) }) { it.copy(tipRatio = clamped) }
     }
 
-    fun setRotationJitter(jitter: Float) = updatePreference({ preferenceManager.setRotationJitter(jitter) }) { it.copy(brushRotationJitter = jitter) }
+    fun setRotationJitter(jitter: Float) = updatePreference(PreferenceManager.ROTATION_JITTER_KEY, { preferenceManager.setRotationJitter(jitter) }) { it.copy(brushRotationJitter = jitter) }
 
-    fun setSizeJitter(jitter: Float) = updatePreference({ preferenceManager.setSizeJitter(jitter) }) { it.copy(sizeJitter = jitter) }
+    fun setSizeJitter(jitter: Float) = updatePreference(PreferenceManager.SIZE_JITTER_KEY, { preferenceManager.setSizeJitter(jitter) }) { it.copy(sizeJitter = jitter) }
 
     /** Scales the brush size past the slider's ceiling. 1x paints at the size as set. */
     fun setSizeMultiplier(multiplier: Float) {
         val clamped = multiplier.coerceIn(0f, SizeMultiplierScale.MAX)
-        updatePreference({ preferenceManager.setSizeMultiplier(clamped) }) { it.copy(sizeMultiplier = clamped) }
+        updatePreference(PreferenceManager.SIZE_MULTIPLIER_KEY, { preferenceManager.setSizeMultiplier(clamped) }) { it.copy(sizeMultiplier = clamped) }
     }
 
-    fun setFlowJitter(amount: Float) = updatePreference({ preferenceManager.setFlowJitter(amount) }) { it.copy(flowJitter = amount) }
+    fun setFlowJitter(amount: Float) = updatePreference(PreferenceManager.FLOW_JITTER_KEY, { preferenceManager.setFlowJitter(amount) }) { it.copy(flowJitter = amount) }
 
-    fun setRotationFollow(amount: Float) = updatePreference({ preferenceManager.setRotationFollow(amount) }) { it.copy(rotationFollow = amount) }
+    fun setRotationFollow(amount: Float) = updatePreference(PreferenceManager.ROTATION_FOLLOW_KEY, { preferenceManager.setRotationFollow(amount) }) { it.copy(rotationFollow = amount) }
 
-    fun setScatterJitter(amount: Float) = updatePreference({ preferenceManager.setScatterJitter(amount) }) { it.copy(scatterJitter = amount) }
+    fun setScatterJitter(amount: Float) = updatePreference(PreferenceManager.SCATTER_JITTER_KEY, { preferenceManager.setScatterJitter(amount) }) { it.copy(scatterJitter = amount) }
 
-    fun setVelocitySize(amount: Float) = updatePreference({ preferenceManager.setVelocitySize(amount) }) { it.copy(velocitySizeAmount = amount) }
+    fun setVelocitySize(amount: Float) = updatePreference(PreferenceManager.VELOCITY_SIZE_KEY, { preferenceManager.setVelocitySize(amount) }) { it.copy(velocitySizeAmount = amount) }
 
-    fun setVelocityFlow(amount: Float) = updatePreference({ preferenceManager.setVelocityFlow(amount) }) { it.copy(velocityFlowAmount = amount) }
+    fun setVelocityFlow(amount: Float) = updatePreference(PreferenceManager.VELOCITY_FLOW_KEY, { preferenceManager.setVelocityFlow(amount) }) { it.copy(velocityFlowAmount = amount) }
 
-    fun setVelocityScatter(amount: Float) = updatePreference({ preferenceManager.setVelocityScatter(amount) }) { it.copy(velocityScatterAmount = amount) }
+    fun setVelocityScatter(amount: Float) = updatePreference(PreferenceManager.VELOCITY_SCATTER_KEY, { preferenceManager.setVelocityScatter(amount) }) { it.copy(velocityScatterAmount = amount) }
 
-    fun setVelocityEnabled(enabled: Boolean) = updatePreference({ preferenceManager.setVelocityEnabled(enabled) }) { it.copy(velocityEnabled = enabled) }
+    fun setVelocityEnabled(enabled: Boolean) = updatePreference(PreferenceManager.VELOCITY_ENABLED_KEY, { preferenceManager.setVelocityEnabled(enabled) }) { it.copy(velocityEnabled = enabled) }
 
     fun setCursorSensitivity(s: Float) = updateProjectSetting { it.copy(cursorSensitivity = s.coerceIn(0.1f, 1.0f)) }
 
-    fun setFillTolerance(tolerance: Float) {
-        viewModelScope.launch { preferenceManager.setFillTolerance(tolerance) }
-    }
+    // These two wrote to the store and waited for the observer to hand the value back, which
+    // was the only thing moving their sliders - so the thumb could not travel faster than the
+    // disk. They now go through updatePreference like every other setting: live in the session
+    // at once, on disk when the drag settles.
+    fun setFillTolerance(tolerance: Float) = updatePreference(
+        PreferenceManager.FILL_TOLERANCE_KEY,
+        { preferenceManager.setFillTolerance(tolerance) }
+    ) { it.copy(fillTolerance = tolerance) }
 
     fun setFillGrow(pixels: Float) {
-        viewModelScope.launch { preferenceManager.setFillGrow(pixels.coerceIn(0f, 8f)) }
+        val clamped = pixels.coerceIn(0f, 8f)
+        updatePreference(
+            PreferenceManager.FILL_GROW_KEY,
+            { preferenceManager.setFillGrow(clamped) }
+        ) { it.copy(fillGrow = clamped) }
     }
 
     fun setColorPickerSliderMode(isSlider: Boolean) {
@@ -1185,5 +1254,9 @@ class DrawingViewModel(
         // viewModelScope is already cancelled here; the flush runs on persistScope so the
         // last strokes aren't lost when leaving the screen
         persistence.flushNow()
+        // Same reason: a setting nudged on the way out has not waited out its delay yet, and
+        // these are globals now - the next project would open with the old value.
+        preferenceFlushJob?.cancel()
+        persistScope.launch { flushPreferences() }
     }
 }
