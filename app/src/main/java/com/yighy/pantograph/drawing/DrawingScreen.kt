@@ -65,6 +65,17 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
+/**
+ * How far in from the top the screen is safe to put a control.
+ *
+ * The status bar inset alone is not that distance. Hiding the bars for fullscreen takes it to
+ * zero while the notch stays exactly where it always was, so anything measuring from the status
+ * bar rides up underneath the cutout the moment fullscreen starts - which is what happened to
+ * the state chips. The cutout inset does not move when the bars do.
+ */
+private val topSafeInsets: WindowInsets
+    @Composable get() = WindowInsets.statusBars.union(WindowInsets.displayCutout)
+
 @Composable
 fun DrawingScreen(
     viewModel: DrawingViewModel,
@@ -185,8 +196,8 @@ fun DrawingScreen(
             // Back Button - Styled EXACTLY the same as top right actions
             if (!isFullscreen) Surface(
                 modifier = Modifier
+                    .windowInsetsPadding(topSafeInsets)
                     .padding(16.dp)
-                    .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
                     .align(Alignment.TopStart),
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surface,
@@ -206,8 +217,8 @@ fun DrawingScreen(
             // Top Right Actions & Layers Panel
             Box(
                 modifier = Modifier
+                    .windowInsetsPadding(topSafeInsets)
                     .padding(16.dp)
-                    .padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding())
                     .align(Alignment.TopEnd)
             ) {
                 LayersAndActionsSection(
