@@ -193,10 +193,9 @@ fun OffscreenCursorIndicator(viewModel: DrawingViewModel) {
     val canvasHeight by remember(viewModel) { viewModel.uiState.map { it.canvasHeight }.distinctUntilChanged() }.collectAsState(1920)
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        // Screen position of the cursor: the canvas box is centered in the viewport and
-        // graphicsLayer scales/rotates around its center, then translates by canvasOffset
-        val rel = cursorPosition - Offset(canvasWidth / 2f, canvasHeight / 2f)
-        val screenPos = Offset(size.width / 2f, size.height / 2f) + canvasOffset + rel.rotate(canvasRotation) * canvasScale
+        val screenPos = canvasToScreen(
+            cursorPosition, canvasWidth, canvasHeight, size, canvasScale, canvasOffset, canvasRotation
+        )
 
         if (screenPos.x in 0f..size.width && screenPos.y in 0f..size.height) return@Canvas
 
