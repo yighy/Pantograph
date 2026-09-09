@@ -31,6 +31,7 @@ class PreferenceManager(private val context: Context) {
         val DYNAMIC_COLOR_KEY = booleanPreferencesKey("dynamic_color")
         val FILL_TOLERANCE_KEY = floatPreferencesKey("fill_tolerance")
         val FILL_GROW_KEY = floatPreferencesKey("fill_grow")
+        val LOUPE_ZOOM_KEY = floatPreferencesKey("loupe_zoom")
         val DEFAULT_BRUSHES_SEEDED_KEY = booleanPreferencesKey("default_brushes_seeded")
         val ROTATION_JITTER_KEY = floatPreferencesKey("rotation_jitter")
         val VELOCITY_SIZE_KEY = floatPreferencesKey("velocity_size")
@@ -201,7 +202,11 @@ class PreferenceManager(private val context: Context) {
      */
     val fillGrow: Flow<Float> = context.dataStore.data.map { it[FILL_GROW_KEY] ?: 2f }.distinctUntilChanged()
 
+    /** How much bigger the loupe draws the canvas. Four is close enough to read individual pixels. */
+    val loupeZoom: Flow<Float> = context.dataStore.data.map { it[LOUPE_ZOOM_KEY] ?: 4f }.distinctUntilChanged()
+
     suspend fun setFillGrow(v: Float) { context.dataStore.edit { it[FILL_GROW_KEY] = v } }
+    suspend fun setLoupeZoom(v: Float) { context.dataStore.edit { it[LOUPE_ZOOM_KEY] = v } }
 
     /**
      * Whether the starter presets have been installed.

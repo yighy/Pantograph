@@ -639,9 +639,10 @@ private fun ToolsMenuButton(
     // Collected here rather than hoisted with its neighbours: this menu is the only thing that
     // reads it, and the chip row builds itself from PinnableTool.isActive.
     val isFineCursor by remember(viewModel) { viewModel.uiState.map { it.isFineCursor }.distinctUntilChanged() }.collectAsState(false)
+    val isLoupeActive by remember(viewModel) { viewModel.uiState.map { it.isLoupeActive }.distinctUntilChanged() }.collectAsState(false)
     val isBucketFill = drawingMode is DrawingMode.BucketFill
     val isSelectionMode = drawingMode.isSelectionTool()
-    val isActive = showTools || isBucketFill || isLazyModeActive || isRecoilActive || isFineCursor || isSelectionMode || drawingMode is DrawingMode.Gradient
+    val isActive = showTools || isBucketFill || isLazyModeActive || isRecoilActive || isFineCursor || isLoupeActive || isSelectionMode || drawingMode is DrawingMode.Gradient
 
     Box {
         IconButton(
@@ -750,6 +751,16 @@ private fun ToolsMenuButton(
                         onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Fine) }
                     ) {
                         viewModel.toggleFineCursor()
+                        showTools = false
+                    }
+                    ExtraToolItem(
+                        "Loupe", isLoupeActive, Icons.Rounded.ZoomIn,
+                        isPinned = pinnedTools.contains(PinnableTool.Loupe),
+                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Loupe) }
+                    ) {
+                        val turningOn = !isLoupeActive
+                        viewModel.toggleLoupe()
+                        if (turningOn) onRequestSettingsPanel()
                         showTools = false
                     }
                 }

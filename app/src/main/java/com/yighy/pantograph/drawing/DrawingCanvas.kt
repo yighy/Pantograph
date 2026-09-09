@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -150,6 +151,11 @@ fun DrawingCanvas(
 
             // Edge arrow pointing at the cursor when it's outside the viewport
             OffscreenCursorIndicator(viewModel)
+
+            // Placed here rather than in DrawingScreen so it survives fullscreen: the loupe is
+            // drawing apparatus, not chrome, and the moment you most want to keep it is the one
+            // where everything else has gone.
+            CursorLoupe(viewModel, viewport = Size(screenWidth, screenHeight))
         }
     }
 }
@@ -231,7 +237,7 @@ fun OffscreenCursorIndicator(viewModel: DrawingViewModel) {
 }
 
 @Composable
-fun CanvasLayer(viewModel: DrawingViewModel) {
+fun CanvasLayer(viewModel: DrawingViewModel, crisp: Boolean = false) {
     // Each field is collected separately with distinctUntilChanged so this composable only
     // recomposes when something it actually draws changes (not on every uiState update, e.g.
     // cursor-only moves while the pen is up).
@@ -251,6 +257,14 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         val _v = renderVersion
+        // Sampling, not geometry: this composable always draws in canvas pixels, and it is the
+        // box around it that magnifies. What it cannot know from that box is how the pixels
+        // should be sampled once they are stretched - so the loupe says. Set on every paint
+        // rather than left to the platform default, which has not always been the same one.
+        //
+        // A flag here does not bring back the mistake the magnify parameter was: forgetting to
+        // pass it to a new overlay leaves that overlay smooth, not absent.
+        val smooth = !crisp
         layers.filter { it.isVisible }.forEach { layer ->
             val isActiveLayer = layer.id == activeLayerId
             val isEraser = drawingMode is DrawingMode.Eraser || drawingMode is DrawingMode.StraightLineEraser
@@ -264,7 +278,10 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                     
                     // Draw layer content
                     layerBitmaps[layer.id]?.let { bitmap ->
-                        val p = android.graphics.Paint().apply { alpha = (layer.opacity * 255).toInt() }
+                        val p = android.graphics.Paint().apply {
+                            alpha = (layer.opacity * 255).toInt()
+                            isFilterBitmap = smooth
+                        }
                         native.drawBitmap(bitmap, null, rect, p)
                     }
                     
@@ -272,6 +289,7 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                     strokeBitmap?.let {
                         val p = android.graphics.Paint().apply {
                             alpha = (brushOpacity * 255).toInt()
+                            isFilterBitmap = smooth
                             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.DST_OUT)
                         }
                         native.drawBitmap(it, null, rect, p)
@@ -295,9 +313,16 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                 ) {
                     // Fast path for the common case (everything fully opaque, no masks):
                     // direct draws are pixel-identical to the saveLayer composition below
-                    // and skip two full-screen offscreen buffers per frame
-                    layerBitmaps[layer.id]?.let { drawImage(it.asImageBitmap()) }
-                    drawImage(sb.asImageBitmap())
+                    // and skip two full-screen offscreen buffers per frame. Still direct -
+                    // drawn through the native canvas only because DrawScope.drawImage has
+                    // nowhere to put the sampling flag.
+                    drawIntoCanvas { canvas ->
+                        val native = canvas.nativeCanvas
+                        val rect = android.graphics.RectF(0f, 0f, size.width, size.height)
+                        val p = android.graphics.Paint().apply { isFilterBitmap = smooth }
+                        layerBitmaps[layer.id]?.let { native.drawBitmap(it, null, rect, p) }
+                        native.drawBitmap(sb, null, rect, p)
+                    }
                 } else if (sb != null && liveStroke) {
                     // Live stroke: compose the stroke INTO the layer content first, then
                     // apply the layer opacity to the whole. This is the exact same math
@@ -309,12 +334,13 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                         val outer = native.saveLayer(rect, android.graphics.Paint().apply {
                             alpha = (layer.opacity * 255).toInt()
                         })
-                        layerBitmaps[layer.id]?.let { native.drawBitmap(it, null, rect, null) }
+                        val bitmapPaint = android.graphics.Paint().apply { isFilterBitmap = smooth }
+                        layerBitmaps[layer.id]?.let { native.drawBitmap(it, null, rect, bitmapPaint) }
 
                         val inner = native.saveLayer(rect, android.graphics.Paint().apply {
                             alpha = (brushOpacity * 255).toInt()
                         })
-                        native.drawBitmap(sb, null, rect, null)
+                        native.drawBitmap(sb, null, rect, bitmapPaint)
                         brushTextureMask?.let { mask ->
                             native.drawRect(rect, android.graphics.Paint().apply {
                                 shader = android.graphics.BitmapShader(mask, android.graphics.Shader.TileMode.REPEAT, android.graphics.Shader.TileMode.REPEAT)
@@ -323,6 +349,7 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                         }
                         selectionMask?.let { mask ->
                             native.drawBitmap(mask, null, rect, android.graphics.Paint().apply {
+                                isFilterBitmap = smooth
                                 xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
                             })
                         }
@@ -331,7 +358,16 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
                     }
                 } else {
                     layerBitmaps[layer.id]?.let { bitmap ->
-                        drawImage(image = bitmap.asImageBitmap(), alpha = layer.opacity)
+                        drawIntoCanvas { canvas ->
+                            canvas.nativeCanvas.drawBitmap(
+                                bitmap, null,
+                                android.graphics.RectF(0f, 0f, size.width, size.height),
+                                android.graphics.Paint().apply {
+                                    alpha = (layer.opacity * 255).toInt()
+                                    isFilterBitmap = smooth
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -345,7 +381,7 @@ fun CanvasLayer(viewModel: DrawingViewModel) {
  * honest; what lives here is the scaffolding you steer by and that never lands on the layer.
  */
 @Composable
-fun ToolPreviewLayer(viewModel: DrawingViewModel) {
+fun ToolPreviewLayer(viewModel: DrawingViewModel, viewScale: Float? = null) {
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     if (drawingMode !is DrawingMode.Path) return
 
@@ -364,7 +400,10 @@ fun ToolPreviewLayer(viewModel: DrawingViewModel) {
         // Everything here is drawn in canvas units inside a box the viewport scales, so each
         // on-screen size is divided back out. Handles that grew with the zoom would bury the
         // drawing at the magnification where you most need to see it.
-        val scale = canvasScale.coerceAtLeast(0.01f)
+        // The loupe draws this same overlay at its own magnification. Every width here is
+        // divided by the scale to stay constant on screen, so it has to be the scale this
+        // copy is actually drawn at rather than the canvas's - see CursorLoupe.
+        val scale = (viewScale ?: canvasScale).coerceAtLeast(0.01f)
         val handle = 5.dp.toPx() / scale
         val hairline = 1.dp.toPx() / scale
 
@@ -433,7 +472,7 @@ fun ToolPreviewLayer(viewModel: DrawingViewModel) {
 }
 
 @Composable
-fun SelectionLayer(viewModel: DrawingViewModel) {
+fun SelectionLayer(viewModel: DrawingViewModel, viewScale: Float? = null, crisp: Boolean = false) {
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val selectionPoints by remember(viewModel) { viewModel.uiState.map { it.selectionPoints }.distinctUntilChanged() }.collectAsState(emptyList())
     val isSelectionClosed by remember(viewModel) { viewModel.uiState.map { it.isSelectionClosed }.distinctUntilChanged() }.collectAsState(false)
@@ -454,7 +493,8 @@ fun SelectionLayer(viewModel: DrawingViewModel) {
         animationSpec = infiniteRepeatable(tween(700, easing = LinearEasing)),
         label = "antsPhase"
     )
-    val floatingPaint = remember { Paint().apply { isAntiAlias = true; isFilterBitmap = true } }
+    // A selection being moved is paint like any other, so it follows the loupe's sampling.
+    val floatingPaint = remember(crisp) { Paint().apply { isAntiAlias = true; isFilterBitmap = !crisp } }
 
     // Mask-based selections (wand/color/inverted) have no polygon: extract a border band
     // from the mask (mask minus its erosion) to draw a real outline instead of a heavy tint
@@ -479,7 +519,9 @@ fun SelectionLayer(viewModel: DrawingViewModel) {
     }
 
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val invScale = 1f / canvasScale
+        // See ToolPreviewLayer: constant-width lines need this view's scale, not the
+        // canvas's, or the marching ants come out several times too thick in the loupe.
+        val invScale = 1f / (viewScale ?: canvasScale).coerceAtLeast(0.01f)
         val sw = 1.5f * invScale
         val fb = floatingBitmap
 
@@ -490,7 +532,10 @@ fun SelectionLayer(viewModel: DrawingViewModel) {
             drawIntoCanvas { canvas ->
                 val native = canvas.nativeCanvas
                 outsideVeil?.let { veil ->
-                    native.drawBitmap(veil, 0f, 0f, android.graphics.Paint().apply { alpha = 96 })
+                    native.drawBitmap(veil, 0f, 0f, android.graphics.Paint().apply {
+                        alpha = 96
+                        isFilterBitmap = !crisp
+                    })
                 }
                 maskEdge?.let { edge ->
                     // Dark under-stroke then white on top: readable on any background

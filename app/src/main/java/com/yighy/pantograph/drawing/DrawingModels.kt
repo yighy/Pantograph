@@ -356,6 +356,15 @@ data class DrawingState(
     val fillTolerance: Float = 10f,
     /** Pixels the fill reaches under the edge that stopped it; see [PreferenceManager.fillGrow]. */
     val fillGrow: Float = 2f,
+    /**
+     * A magnified window onto the canvas under the brush.
+     *
+     * Not persisted, like the other mode toggles: whether you want it is a property of the
+     * passage you are working on. [loupeZoom] is, because it is a preference about the window
+     * rather than about the drawing.
+     */
+    val isLoupeActive: Boolean = false,
+    val loupeZoom: Float = 4f,
     val isLazyModeActive: Boolean = false,
     val lazyRadius: Float = 50f,
     val showOffscreenCursorArrow: Boolean = false,

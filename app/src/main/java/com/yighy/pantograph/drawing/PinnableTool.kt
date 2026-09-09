@@ -11,6 +11,7 @@ import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Cable
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material.icons.rounded.Replay
+import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.ui.graphics.vector.ImageVector
 
@@ -46,6 +47,12 @@ enum class PinnableTool(
      */
     Fine("Fine", Icons.Rounded.CenterFocusStrong),
     /**
+     * Opens the magnified window. Carries [opensSettings] for the same reason Fill and Lazy do:
+     * the zoom that makes it useful lives in the settings panel, and arriving at a window whose
+     * magnification cannot be found is arriving at the wrong one.
+     */
+    Loupe("Loupe", Icons.Rounded.ZoomIn, opensSettings = true),
+    /**
      * Pinnable like the rest, which is what gives it a way *out*: the readout row draws every
      * armed tool with a cross on it, and that cross is the only control left on screen.
      */
@@ -69,6 +76,7 @@ enum class PinnableTool(
         Lazy -> state.isLazyModeActive
         Recoil -> state.isRecoilActive
         Fine -> state.isFineCursor
+        Loupe -> state.isLoupeActive
         Fullscreen -> state.isFullscreen
         Lasso -> state.drawingMode is DrawingMode.SelectLasso
         Rect -> state.drawingMode is DrawingMode.SelectRect
@@ -93,6 +101,7 @@ enum class PinnableTool(
             Lazy -> viewModel.toggleLazyMode()
             Recoil -> viewModel.toggleRecoil()
             Fine -> viewModel.toggleFineCursor()
+            Loupe -> viewModel.toggleLoupe()
             Fullscreen -> viewModel.toggleFullscreen()
             Gradient -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.Gradient)
             Lasso -> viewModel.setDrawingMode(if (wasActive) DrawingMode.Freehand else DrawingMode.SelectLasso)

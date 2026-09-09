@@ -892,6 +892,8 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
     val fillTolerance by remember(viewModel) { viewModel.uiState.map { it.fillTolerance }.distinctUntilChanged() }.collectAsState(10f)
     val fillGrow by remember(viewModel) { viewModel.uiState.map { it.fillGrow }.distinctUntilChanged() }.collectAsState(2f)
     val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
+    val isLoupeActive by remember(viewModel) { viewModel.uiState.map { it.isLoupeActive }.distinctUntilChanged() }.collectAsState(false)
+    val loupeZoom by remember(viewModel) { viewModel.uiState.map { it.loupeZoom }.distinctUntilChanged() }.collectAsState(4f)
     val isFineCursor by remember(viewModel) { viewModel.uiState.map { it.isFineCursor }.distinctUntilChanged() }.collectAsState(false)
     val lazyRadius by remember(viewModel) { viewModel.uiState.map { it.lazyRadius }.distinctUntilChanged() }.collectAsState(50f)
 
@@ -917,6 +919,10 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
             
             if (isLazyModeActive) {
                 SettingRow("Lazy Radius", "${lazyRadius.toInt()}px", lazyRadius, { viewModel.setLazyRadius(it) }, 10f..500f)
+            }
+
+            if (isLoupeActive) {
+                SettingRow("Loupe Zoom", "${loupeZoom.toInt()}x", loupeZoom, { viewModel.setLoupeZoom(it) }, 2f..12f)
             }
 
             if (drawingMode is DrawingMode.BucketFill || drawingMode is DrawingMode.SelectWand || drawingMode is DrawingMode.SelectColor) {

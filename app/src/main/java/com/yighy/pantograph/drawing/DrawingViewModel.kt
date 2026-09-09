@@ -268,6 +268,10 @@ class DrawingViewModel(
             .onEach { grow -> session.update { it.copy(fillGrow = grow) } }
             .launchIn(viewModelScope)
 
+        preferenceManager.loupeZoom
+            .onEach { zoom -> session.update { it.copy(loupeZoom = zoom) } }
+            .launchIn(viewModelScope)
+
         // The brush settings that are also global preferences. Walked from one list rather
         // than spelled out here, because BrushPresetController has to write the same set back
         // when a preset is loaded - see MirroredBrushSetting for what a mismatch costs.
@@ -1202,6 +1206,19 @@ class DrawingViewModel(
     }
 
     /** Arms or disarms the cursor springing back to each stroke's starting point. */
+    /** Opens or closes the magnified window onto the canvas under the brush. */
+    fun toggleLoupe() {
+        session.update { it.copy(isLoupeActive = !it.isLoupeActive) }
+    }
+
+    fun setLoupeZoom(zoom: Float) {
+        val clamped = zoom.coerceIn(2f, 12f)
+        updatePreference(
+            PreferenceManager.LOUPE_ZOOM_KEY,
+            { preferenceManager.setLoupeZoom(clamped) }
+        ) { it.copy(loupeZoom = clamped) }
+    }
+
     /** Hands Draw Sensitivity the raised pen as well, instead of only the drawing one. */
     fun toggleFineCursor() {
         session.update { it.copy(isFineCursor = !it.isFineCursor) }
