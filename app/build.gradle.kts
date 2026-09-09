@@ -26,8 +26,8 @@ android {
         applicationId = "com.yighy.pantograph"
         minSdk = 31
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.15.0"
+        versionCode = 9
+        versionName = "0.16.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
