@@ -63,6 +63,7 @@ as you cross a threshold.
 - Lazy/rope mode for extra-smooth curves.
 - Recoil: the cursor springs back to where each stroke began, so the next mark is offset from somewhere meaningful.
 - Fine: Draw Sensitivity applies to the raised pen too, so the scale never changes under the finger and the cursor can be placed as precisely as it draws.
+- Loupe: a magnified window onto the canvas under the brush, so detail work no longer means zooming the canvas in and back out. It shows the live stroke, and moves aside when the brush reaches it.
 - Selection: lasso, rectangle, magic wand, colour select — move, transform, duplicate, invert.
 - A lifted selection survives a layer change, so it can be pasted into another layer.
 - Active selections clip every tool.
