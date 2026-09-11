@@ -23,7 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -88,6 +90,9 @@ fun CursorLoupe(viewModel: DrawingViewModel, viewport: Size) {
     val canvasRotation by remember(viewModel) {
         viewModel.uiState.map { it.canvasRotation }.distinctUntilChanged()
     }.collectAsState(0f)
+    val isPenDown by remember(viewModel) {
+        viewModel.uiState.map { it.isPenDown }.distinctUntilChanged()
+    }.collectAsState(false)
 
     val density = LocalDensity.current
     val sizePx = with(density) { LOUPE_SIZE.toPx() }
@@ -117,7 +122,19 @@ fun CursorLoupe(viewModel: DrawingViewModel, viewport: Size) {
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             tonalElevation = 3.dp
         ) {
-            Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clipToBounds()
+                    // The crosshair below subtracts itself from what it lands on, so it needs
+                    // the magnified picture to already be in the buffer it draws into. On the
+                    // canvas that happens for free - the cursor and the layers are siblings
+                    // inside one graphicsLayer - but here the magnified content carries a layer
+                    // of its own and the crosshair sits outside it. Compositing the pair
+                    // offscreen says what they blend against instead of leaving it to how
+                    // render nodes happen to be flattened.
+                    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            ) {
                 Box(
                     modifier = Modifier
                         .wrapContentSize(unbounded = true)
@@ -149,7 +166,7 @@ fun CursorLoupe(viewModel: DrawingViewModel, viewport: Size) {
                     SelectionLayer(viewModel, viewScale = zoom, crisp = true)
                 }
 
-                LoupeCrosshair()
+                LoupeCrosshair(isPenDown)
             }
         }
     }
@@ -162,8 +179,14 @@ fun CursorLoupe(viewModel: DrawingViewModel, viewport: Size) {
  * the one pixel it must not cover.
  */
 @Composable
-private fun LoupeCrosshair() {
-    val ink = MaterialTheme.colorScheme.onSurface
+private fun LoupeCrosshair(isPenDown: Boolean) {
+    // Difference against the backdrop, the way the canvas cursor stays visible. A flat theme
+    // colour disappears the moment the paint under it happens to match - and in a window whose
+    // whole content is paint, that is not a rare accident.
+    //
+    // White inverts whatever it lands on; cyan while the pen is down is the colour the canvas
+    // marks the brush with, and the brush is what this window is centred on.
+    val ink = if (isPenDown) Color.Cyan else Color.White
     Canvas(modifier = Modifier.fillMaxSize()) {
         val c = Offset(size.width / 2f, size.height / 2f)
         val gap = 4.dp.toPx()
@@ -171,10 +194,13 @@ private fun LoupeCrosshair() {
         val w = 1.dp.toPx()
         listOf(Offset(-1f, 0f), Offset(1f, 0f), Offset(0f, -1f), Offset(0f, 1f)).forEach { dir ->
             drawLine(
-                color = ink.copy(alpha = 0.75f),
+                // Full alpha: under Difference a faded colour is a partial inversion, which is
+                // exactly the washed-out grey that made this hard to see in the first place.
+                color = ink,
                 start = c + dir * gap,
                 end = c + dir * (gap + arm),
-                strokeWidth = w
+                strokeWidth = w,
+                blendMode = BlendMode.Difference
             )
         }
     }
