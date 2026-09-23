@@ -7,7 +7,9 @@ import kotlin.math.min
 /** A colour as the gate works on it. Hue in degrees, the other two 0..1. */
 data class Hsv(val hue: Float, val saturation: Float, val value: Float) {
 
-    fun withHue(h: Float) = copy(hue = h.coerceIn(0f, 360f))
+    // Wrapped rather than clamped: the hue circle has no ends, and the conversion below
+     // already treats it that way. Clamping here was the odd one out.
+    fun withHue(h: Float) = copy(hue = GateMath.wrapInto(h, 0f, 360f))
     fun withSaturation(s: Float) = copy(saturation = s.coerceIn(0f, 1f))
     fun withValue(v: Float) = copy(value = v.coerceIn(0f, 1f))
 }

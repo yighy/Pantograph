@@ -870,7 +870,8 @@ fun HoverDrawButton(
                                 min = p.min,
                                 max = p.max,
                                 deadZonePx = deadZonePx,
-                                travelPx = travelPx
+                                travelPx = travelPx,
+                                wrap = p.wraps
                             )
                             anchorValue = stepped.anchorValue
                             anchorY = stepped.anchorPos
@@ -1182,9 +1183,15 @@ fun HoverDrawButton(
  * with the colour controls, and a fourth pill orbiting the button would have cost more room
  * than the whole gate.
  */
-private enum class ColourGateParam(val label: String, val min: Float, val max: Float) {
+private enum class ColourGateParam(
+    val label: String,
+    val min: Float,
+    val max: Float,
+    /** See [GateMath.step]: true only where the two ends of the range are the same value. */
+    val wraps: Boolean = false
+) {
     // Declaration order is the column order in the gate and in its readout panel.
-    Hue("Hue", 0f, 360f),
+    Hue("Hue", 0f, 360f, wraps = true),
     Saturation("Sat", 0f, 1f),
     Brightness("Bright", 0f, 1f),
     Pipette("Pick", 0f, 1f);

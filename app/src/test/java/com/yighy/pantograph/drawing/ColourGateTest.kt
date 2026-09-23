@@ -85,10 +85,16 @@ class ColourGateTest {
     }
 
     @Test
-    fun `components clamp instead of wrapping past their ends`() {
-        assertEquals(360f, Hsv(0f, 1f, 1f).withHue(400f).hue, 0.001f)
-        assertEquals(0f, Hsv(0f, 1f, 1f).withHue(-20f).hue, 0.001f)
+    fun `saturation and brightness clamp, because their ends are real`() {
         assertEquals(1f, Hsv(0f, 0f, 1f).withSaturation(2f).saturation, 0.001f)
         assertEquals(0f, Hsv(0f, 0f, 1f).withValue(-1f).value, 0.001f)
+    }
+
+    @Test
+    fun `hue wraps, because its ends are the same colour`() {
+        assertEquals(40f, Hsv(0f, 1f, 1f).withHue(400f).hue, 0.001f)
+        assertEquals(340f, Hsv(0f, 1f, 1f).withHue(-20f).hue, 0.001f)
+        // The seam itself: one turn on is the colour you set out from, not the far end.
+        assertEquals(0f, Hsv(0f, 1f, 1f).withHue(360f).hue, 0.001f)
     }
 }

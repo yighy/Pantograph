@@ -15,6 +15,59 @@ class GateMathTest {
     private val deadZone = 12f
     private val travel = 300f
 
+    // ---- wrapping ranges ----
+
+    @Test
+    fun `wrapInto brings a value back round both ways`() {
+        assertEquals(350f, GateMath.wrapInto(-10f, 0f, 360f), 0.001f)
+        assertEquals(10f, GateMath.wrapInto(370f, 0f, 360f), 0.001f)
+        assertEquals(0f, GateMath.wrapInto(360f, 0f, 360f), 0.001f)
+        assertEquals(180f, GateMath.wrapInto(180f, 0f, 360f), 0.001f)
+    }
+
+    @Test
+    fun `a wrapping gate carries on past the bottom instead of stopping`() {
+        // Sitting on zero and still pushing the value down, but well short of a full sweep.
+        val stepped = GateMath.step(
+            anchorValue = 0f, anchorPos = 0f, currentPos = deadZone + 100f,
+            min = 0f, max = 360f, deadZonePx = deadZone, travelPx = travel, wrap = true
+        )
+        assertTrue("expected to come round the top, got ${stepped.value}", stepped.value > 180f)
+        assertTrue("expected to stay below the top, got ${stepped.value}", stepped.value < 360f)
+    }
+
+    @Test
+    fun `a full sweep of a wrapping gate comes all the way round`() {
+        // Worth pinning because it reads as a bug the first time you meet it: spend the whole
+        // travel on a range that closes and you arrive back where you started, not at the end.
+        val stepped = GateMath.step(
+            anchorValue = 0f, anchorPos = 0f, currentPos = travel,
+            min = 0f, max = 360f, deadZonePx = deadZone, travelPx = travel, wrap = true
+        )
+        assertEquals(0f, stepped.value, 0.001f)
+    }
+
+    @Test
+    fun `a wrapping gate never pins, so the anchor stays where it was`() {
+        val stepped = GateMath.step(
+            anchorValue = 0f, anchorPos = 0f, currentPos = travel,
+            min = 0f, max = 360f, deadZonePx = deadZone, travelPx = travel, wrap = true
+        )
+        assertFalse(stepped.pinned)
+        assertEquals(0f, stepped.anchorValue, 0.001f)
+        assertEquals(0f, stepped.anchorPos, 0.001f)
+    }
+
+    @Test
+    fun `without wrap the same push still stops at the limit`() {
+        val stepped = GateMath.step(
+            anchorValue = 0f, anchorPos = 0f, currentPos = travel,
+            min = 0f, max = 360f, deadZonePx = deadZone, travelPx = travel
+        )
+        assertEquals(0f, stepped.value, 0.001f)
+        assertTrue(stepped.pinned)
+    }
+
     // ---- dead zone ----
 
     @Test

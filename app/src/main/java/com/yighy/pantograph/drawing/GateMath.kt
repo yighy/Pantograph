@@ -51,6 +51,10 @@ object GateMath {
      * curve is normalised over what's left after the dead zone, so moving exactly this far
      * really does span the whole range - measuring against the raw figure instead left the
      * last few percent of the range out of reach in a single sweep.
+     * @param wrap for a range whose ends are the same place. Hue is the only one: 0 and 360
+     * are one colour, so stopping there is an artefact of holding an angle in a bounded float
+     * rather than anything about colour. Everything else has real ends - nothing is less
+     * saturated than grey - and clamping them is the honest answer.
      */
     fun step(
         anchorValue: Float,
@@ -59,17 +63,36 @@ object GateMath {
         min: Float,
         max: Float,
         deadZonePx: Float,
-        travelPx: Float
+        travelPx: Float,
+        wrap: Boolean = false
     ): GateStep {
         val usableTravel = (travelPx - deadZonePx).coerceAtLeast(1f)
         val delta = effectiveDelta(anchorPos - currentPos, deadZonePx)
         val raw = anchorValue + shape(delta, usableTravel) * (max - min)
+        if (wrap) {
+            // No pinning: pinning exists so travel spent against a limit doesn't have to be
+            // retraced, and a range that comes round again has no limit to spend it against.
+            return GateStep(wrapInto(raw, min, max), anchorValue, anchorPos, pinned = false)
+        }
         val clamped = raw.coerceIn(min, max)
         return if (raw != clamped) {
             GateStep(clamped, anchorValue = clamped, anchorPos = currentPos, pinned = true)
         } else {
             GateStep(clamped, anchorValue = anchorValue, anchorPos = anchorPos, pinned = false)
         }
+    }
+
+    /**
+     * Brings [value] back inside a range that closes on itself, so one step below [min] lands
+     * just under [max].
+     *
+     * The doubled remainder is deliberate: Kotlin's % keeps the sign of the dividend, so a
+     * single one leaves -1 as -1 rather than as 359.
+     */
+    fun wrapInto(value: Float, min: Float, max: Float): Float {
+        val span = max - min
+        if (span <= 0f) return min
+        return min + (((value - min) % span) + span) % span
     }
 
     /** Touch-down point a quadrant gate measures its direction from. */
