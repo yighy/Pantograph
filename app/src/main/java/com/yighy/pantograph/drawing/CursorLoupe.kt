@@ -94,6 +94,19 @@ fun CursorLoupe(viewModel: DrawingViewModel, viewport: Size) {
         viewModel.uiState.map { it.isPenDown }.distinctUntilChanged()
     }.collectAsState(false)
 
+    // What the window actually magnifies by, which is not the setting on its own.
+    //
+    // Zoomed out, the setting is the whole answer: at a canvas scale of 0.3 you want the loupe
+    // showing real pixels, and anything relative would hand you 1.2x and no loupe worth opening.
+    // Zoomed in, the setting alone is worse than nothing - park the canvas at 6x with a 4x loupe
+    // and the window shows *less* detail than the paper behind it, which is a magnifier working
+    // backwards.
+    //
+    // Taking the canvas scale only when it is above 1 gives both: an absolute magnification
+    // while the canvas is at or below life size, and a constant ratio - always this much closer
+    // than what you are looking at - once you zoom past it.
+    val effectiveZoom = zoom * canvasScale.coerceAtLeast(1f)
+
     val density = LocalDensity.current
     val sizePx = with(density) { LOUPE_SIZE.toPx() }
     val marginPx = with(density) { LOUPE_MARGIN.toPx() }
@@ -143,14 +156,14 @@ fun CursorLoupe(viewModel: DrawingViewModel, viewport: Size) {
                             (canvasHeight / density.density).dp
                         )
                         .graphicsLayer {
-                            scaleX = zoom
-                            scaleY = zoom
+                            scaleX = effectiveZoom
+                            scaleY = effectiveZoom
                             // The same relationship the canvas box has with the viewport: the
                             // box is centred in its parent and graphicsLayer scales it about its
                             // own centre, so a translation of -(point - canvasCentre) * zoom is
                             // what carries that point to the middle of the window.
-                            translationX = -(brushPosition.x - canvasWidth / 2f) * zoom
-                            translationY = -(brushPosition.y - canvasHeight / 2f) * zoom
+                            translationX = -(brushPosition.x - canvasWidth / 2f) * effectiveZoom
+                            translationY = -(brushPosition.y - canvasHeight / 2f) * effectiveZoom
                         }
                         .background(Color.White)
                 ) {
@@ -162,8 +175,8 @@ fun CursorLoupe(viewModel: DrawingViewModel, viewport: Size) {
                     // viewScale: both size their lines by the inverse of the scale they are
                     // drawn at, so they have to be told this window's rather than the canvas's -
                     // otherwise a selection outline reads several times too thick in here.
-                    ToolPreviewLayer(viewModel, viewScale = zoom)
-                    SelectionLayer(viewModel, viewScale = zoom, crisp = true)
+                    ToolPreviewLayer(viewModel, viewScale = effectiveZoom)
+                    SelectionLayer(viewModel, viewScale = effectiveZoom, crisp = true)
                 }
 
                 LoupeCrosshair(isPenDown)
