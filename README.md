@@ -64,6 +64,7 @@ as you cross a threshold.
 - Recoil: the cursor springs back to where each stroke began, so the next mark is offset from somewhere meaningful.
 - Fine: Draw Sensitivity applies to the raised pen too, so the scale never changes under the finger and the cursor can be placed as precisely as it draws.
 - Loupe: a magnified window onto the canvas under the brush, so detail work no longer means zooming the canvas in and back out. It shows the live stroke, and moves aside when the brush reaches it.
+- Every armed tool shows as a chip. Tap it to turn the tool off; drag it to set the tool's values — lazy radius, loupe zoom, fill and selection tolerance and expand — with a fill showing where each sits in its range.
 - Selection: lasso, rectangle, magic wand, colour select — move, transform, duplicate, invert.
 - A lifted selection survives a layer change, so it can be pasted into another layer.
 - Active selections clip every tool.
@@ -76,7 +77,7 @@ as you cross a threshold.
 - Import an image as a new layer, positioned before it is applied.
 - Floating reference image window — movable, resizable, colour-pickable.
 - Eyedropper, colour history, HSB picker.
-- Fullscreen: everything goes but the floating button, its satellites and the state chips — which is still a complete set of controls.
+- Fullscreen: everything goes but the floating button, its satellites and the state chips — which is still a complete set of controls. A path or selection in progress keeps its commands, since nothing else can finish it.
 - Export as PNG.
 
 ## Building
