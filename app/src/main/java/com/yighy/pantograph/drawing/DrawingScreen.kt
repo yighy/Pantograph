@@ -52,6 +52,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -487,14 +489,31 @@ private fun ChipReadout(
     }
 }
 
+/** Clearance above the point of contact: only the tip of the finger is up there. */
+private val READOUT_GAP_ABOVE = 36.dp
+
+/** Clearance below it, where the rest of the finger follows. */
+private val READOUT_GAP_BELOW = 72.dp
+
+private val READOUT_MARGIN = 8.dp
+
+/** Room to spare before the readout returns above - see [ReadoutPlacement.staysAbove]. */
+private val READOUT_HYSTERESIS = 16.dp
+
 /**
- * Hands [ReadoutPlacement] the finger in window coordinates. A data class so the popup only
- * repositions when the finger has actually moved: it compares providers to decide.
+ * Hands [ReadoutPlacement] the finger in window coordinates. Which side is decided elsewhere,
+ * in the gesture: the choice depends on the side it was on a moment ago, and a position
+ * provider is asked for a position, not given somewhere to remember one.
+ *
+ * A data class so the popup only repositions when something has actually changed: it compares
+ * providers to decide.
  */
-private data class BesideFinger(
+private data class AboveOrBelowFinger(
     val fingerX: Float,
     val fingerY: Float,
-    val gapPx: Int,
+    val above: Boolean,
+    val gapAbovePx: Int,
+    val gapBelowPx: Int,
     val marginPx: Int
 ) : PopupPositionProvider {
     override fun calculatePosition(
@@ -504,14 +523,16 @@ private data class BesideFinger(
         popupContentSize: IntSize
     ): IntOffset {
         // The finger arrives relative to the chip; the anchor is the chip, placed in the window.
-        val (x, y) = ReadoutPlacement.besideFinger(
+        val (x, y) = ReadoutPlacement.aboveOrBelow(
             fingerX = anchorBounds.left + fingerX.roundToInt(),
             fingerY = anchorBounds.top + fingerY.roundToInt(),
             width = popupContentSize.width,
             height = popupContentSize.height,
             windowWidth = windowSize.width,
             windowHeight = windowSize.height,
-            gap = gapPx,
+            above = above,
+            gapAbove = gapAbovePx,
+            gapBelow = gapBelowPx,
             margin = marginPx
         )
         return IntOffset(x, y)
@@ -566,9 +587,15 @@ private fun ToolStateChip(
     }.collectAsState(1f)
     val haptics = LocalHapticFeedback.current
     var adjusting by remember { mutableStateOf(false) }
-    // Where the finger is on the chip, for the readout to sit beside it.
+    val density = LocalDensity.current
+    // Where the finger is on the chip, for the readout to sit above or below it.
     var fingerX by remember { mutableFloatStateOf(0f) }
     var fingerY by remember { mutableFloatStateOf(0f) }
+    // What deciding the readout's side needs: where the chip is in the window, how tall the
+    // readout is - an estimate until it has been drawn once - and which side it is on now.
+    var chipTopInWindow by remember { mutableFloatStateOf(0f) }
+    var readoutHeightPx by remember { mutableIntStateOf(with(density) { 44.dp.roundToPx() }) }
+    var readoutAbove by remember { mutableStateOf(true) }
     // The gesture outlives recompositions of the chip; reading the dismiss through this makes
     // a tap act on the chip as it is when the finger lifts, not as it was when it landed.
     val currentDismiss by rememberUpdatedState(onDismiss)
@@ -602,6 +629,11 @@ private fun ToolStateChip(
             var inDeadZone = true
             fingerX = down.position.x
             fingerY = down.position.y
+            // A fresh gesture starts from the preferred side and moves off it only if it must.
+            readoutAbove = true
+            val gapAbovePx = READOUT_GAP_ABOVE.roundToPx()
+            val readoutMarginPx = READOUT_MARGIN.roundToPx()
+            val hysteresisPx = READOUT_HYSTERESIS.roundToPx()
             // Only a real lift counts as a tap. A cancelled gesture also leaves the loop, and
             // turning a tool off because the system took the pointer away is not a request.
             var released = false
@@ -624,6 +656,14 @@ private fun ToolStateChip(
                     change.consume()
                     fingerX = change.position.x
                     fingerY = change.position.y
+                    readoutAbove = ReadoutPlacement.staysAbove(
+                        fingerY = (chipTopInWindow + change.position.y).roundToInt(),
+                        height = readoutHeightPx,
+                        gapAbove = gapAbovePx,
+                        margin = readoutMarginPx,
+                        wasAbove = readoutAbove,
+                        hysteresis = hysteresisPx
+                    )
                     anchorX = GateMath.clampColumnAnchor(
                         anchorX = anchorX,
                         fingerX = change.position.x,
@@ -709,11 +749,10 @@ private fun ToolStateChip(
             fill = if (params.size > 1) (current[i] - param.min) / (param.max - param.min) else null
         )
     }
-    val density = LocalDensity.current
 
     // The box is the popup's anchor: it is exactly the chip, which is what the finger
     // coordinates from the gesture are relative to.
-    Box {
+    Box(modifier = Modifier.onGloballyPositioned { chipTopInWindow = it.positionInWindow().y }) {
         ActiveStateChip(
             icon = tool.icon,
             label = tool.label,
@@ -736,15 +775,18 @@ private fun ToolStateChip(
         // numbers are visible whenever no finger is on them.
         if (adjusting) {
             Popup(
-                popupPositionProvider = BesideFinger(
+                popupPositionProvider = AboveOrBelowFinger(
                     fingerX = fingerX,
                     fingerY = fingerY,
-                    // Clear of the fingertip's width, not just its centre.
-                    gapPx = with(density) { 40.dp.roundToPx() },
-                    marginPx = with(density) { 8.dp.roundToPx() }
+                    above = readoutAbove,
+                    gapAbovePx = with(density) { READOUT_GAP_ABOVE.roundToPx() },
+                    gapBelowPx = with(density) { READOUT_GAP_BELOW.roundToPx() },
+                    marginPx = with(density) { READOUT_MARGIN.roundToPx() }
                 )
             ) {
-                ChipReadout(tool.icon, tool.label, shown, wholeFill, fillColor)
+                Box(modifier = Modifier.onSizeChanged { readoutHeightPx = it.height }) {
+                    ChipReadout(tool.icon, tool.label, shown, wholeFill, fillColor)
+                }
             }
         }
     }

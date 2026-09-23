@@ -1,12 +1,13 @@
 package com.yighy.pantograph.drawing
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * The readout exists to be seen while a finger is on the chip, so every case below is one where
- * getting it wrong puts the value back under the hand or off the screen.
+ * getting it wrong puts the value back under the hand, off the screen, or flickering.
  */
 class ReadoutPlacementTest {
 
@@ -14,46 +15,82 @@ class ReadoutPlacementTest {
     private val h = 60
     private val windowW = 1080
     private val windowH = 2400
-    private val gap = 100
-    private val margin = 30
+    private val gapAbove = 50
+    private val gapBelow = 120
+    private val margin = 20
+    private val hysteresis = 30
 
-    private fun place(fingerX: Int, fingerY: Int) =
-        ReadoutPlacement.besideFinger(fingerX, fingerY, w, h, windowW, windowH, gap, margin)
+    /** The finger height at which the readout exactly stops fitting above. */
+    private val threshold = gapAbove + h + margin
+
+    private fun staysAbove(fingerY: Int, wasAbove: Boolean) =
+        ReadoutPlacement.staysAbove(fingerY, h, gapAbove, margin, wasAbove, hysteresis)
+
+    private fun place(fingerX: Int, fingerY: Int, above: Boolean) =
+        ReadoutPlacement.aboveOrBelow(fingerX, fingerY, w, h, windowW, windowH, above, gapAbove, gapBelow, margin)
+
+    // ---- which side ----
 
     @Test
-    fun `it sits to the left of the finger when there is room`() {
-        val (x, _) = place(fingerX = 900, fingerY = 300)
-        assertEquals(900 - gap - w, x)
+    fun `above when there is room`() {
+        assertTrue(staysAbove(fingerY = 600, wasAbove = true))
     }
 
     @Test
-    fun `it never overlaps the finger on the side it chose`() {
-        val (x, _) = place(fingerX = 900, fingerY = 300)
-        assertTrue("right edge ${x + w} should stay clear of the finger", x + w <= 900 - gap)
+    fun `below when there is no room above`() {
+        // The chips' usual case in fullscreen: a finger right up near the top of the screen.
+        assertFalse(staysAbove(fingerY = 40, wasAbove = true))
     }
 
     @Test
-    fun `it moves to the right when the left has no room`() {
-        val (x, _) = place(fingerX = 200, fingerY = 300)
-        assertEquals(200 + gap, x)
+    fun `it stays above right up to the height where it stops fitting`() {
+        assertTrue(staysAbove(fingerY = threshold, wasAbove = true))
+        assertFalse(staysAbove(fingerY = threshold - 1, wasAbove = true))
     }
 
     @Test
-    fun `it is centred on the fingertip vertically`() {
-        val (_, y) = place(fingerX = 900, fingerY = 800)
-        assertEquals(800 - h / 2, y)
+    fun `a finger jittering at the threshold does not flip it back up`() {
+        // Having just gone below, a pixel back is not enough to return.
+        assertFalse(staysAbove(fingerY = threshold + 1, wasAbove = false))
+        assertFalse(staysAbove(fingerY = threshold + hysteresis - 1, wasAbove = false))
     }
 
     @Test
-    fun `it stays inside the top of the window`() {
-        // The case the chips live in: a finger right up against the top of the screen.
-        val (_, y) = place(fingerX = 900, fingerY = 10)
-        assertEquals(margin, y)
+    fun `it returns above once there is room to spare`() {
+        assertTrue(staysAbove(fingerY = threshold + hysteresis, wasAbove = false))
+    }
+
+    // ---- where ----
+
+    @Test
+    fun `above, it clears the fingertip`() {
+        val (_, y) = place(fingerX = 500, fingerY = 600, above = true)
+        assertEquals(600 - gapAbove - h, y)
+        assertTrue(y + h <= 600 - gapAbove)
     }
 
     @Test
-    fun `it stays inside the bottom of the window`() {
-        val (_, y) = place(fingerX = 900, fingerY = windowH)
+    fun `below, it clears the finger`() {
+        val (_, y) = place(fingerX = 500, fingerY = 600, above = false)
+        assertEquals(600 + gapBelow, y)
+    }
+
+    @Test
+    fun `it is centred on the finger across`() {
+        val (x, _) = place(fingerX = 500, fingerY = 600, above = true)
+        assertEquals(500 - w / 2, x)
+    }
+
+    @Test
+    fun `against the right edge it is kept on screen`() {
+        // Where the chips live: packed against the right edge.
+        val (x, _) = place(fingerX = windowW - 10, fingerY = 600, above = true)
+        assertEquals(windowW - w - margin, x)
+    }
+
+    @Test
+    fun `below the bottom of the window it is kept on screen`() {
+        val (_, y) = place(fingerX = 500, fingerY = windowH - 10, above = false)
         assertEquals(windowH - h - margin, y)
     }
 }
