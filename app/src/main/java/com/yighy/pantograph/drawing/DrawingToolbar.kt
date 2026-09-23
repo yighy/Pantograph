@@ -888,48 +888,23 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
     // Smoothing lives in the Brush Studio only now (see BrushStudio.kt); removed here to
     // keep this quick panel focused on things that aren't brush-specific
     val cursorSensitivity by remember(viewModel) { viewModel.uiState.map { it.cursorSensitivity }.distinctUntilChanged() }.collectAsState(0.6f)
-    val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
-    val fillTolerance by remember(viewModel) { viewModel.uiState.map { it.fillTolerance }.distinctUntilChanged() }.collectAsState(10f)
-    val fillGrow by remember(viewModel) { viewModel.uiState.map { it.fillGrow }.distinctUntilChanged() }.collectAsState(2f)
-    val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
-    val isLoupeActive by remember(viewModel) { viewModel.uiState.map { it.isLoupeActive }.distinctUntilChanged() }.collectAsState(false)
-    val loupeZoom by remember(viewModel) { viewModel.uiState.map { it.loupeZoom }.distinctUntilChanged() }.collectAsState(4f)
     val isFineCursor by remember(viewModel) { viewModel.uiState.map { it.isFineCursor }.distinctUntilChanged() }.collectAsState(false)
-    val lazyRadius by remember(viewModel) { viewModel.uiState.map { it.lazyRadius }.distinctUntilChanged() }.collectAsState(50f)
 
+    // Tools' own values are not here any more: each lives on its tool's chip, which is showing
+    // exactly while the value matters, and is marked as draggable. What is left is the one
+    // setting that belongs to no tool.
     Column {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
-        // Rows appear and disappear here as tools change while the panel is already open.
-        // AnimatedVisibility only animates the panel's own show/hide, so without this the
-        // Lazy Radius and Tolerance rows would pop in with no transition.
-        Column(
-            modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // The label follows the tool rather than staying put: with Fine armed this is no
-            // longer a setting about drawing, it is what the cursor does at all times, and this
-            // row is the only place that says so.
-            SettingRow(
-                if (isFineCursor) "Cursor Sensitivity" else "Draw Sensitivity",
-                "${"%.1f".format(cursorSensitivity)}x",
-                cursorSensitivity,
-                { viewModel.setCursorSensitivity(it) },
-                0.1f..1.0f
-            )
-            
-            if (isLazyModeActive) {
-                SettingRow("Lazy Radius", "${lazyRadius.toInt()}px", lazyRadius, { viewModel.setLazyRadius(it) }, 10f..500f)
-            }
-
-            if (isLoupeActive) {
-                SettingRow("Loupe Zoom", "${loupeZoom.toInt()}x", loupeZoom, { viewModel.setLoupeZoom(it) }, 2f..12f)
-            }
-
-            if (drawingMode is DrawingMode.BucketFill || drawingMode is DrawingMode.SelectWand || drawingMode is DrawingMode.SelectColor) {
-                SettingRow("Tolerance", "${fillTolerance.toInt()}", fillTolerance, { viewModel.setFillTolerance(it) }, 0f..200f)
-                SettingRow("Expand", "${fillGrow.toInt()} px", fillGrow, { viewModel.setFillGrow(it) }, 0f..8f)
-            }
-        }
+        // The label follows the tool rather than staying put: with Fine armed this is no longer
+        // a setting about drawing, it is what the cursor does at all times, and this row is the
+        // only place that says so.
+        SettingRow(
+            if (isFineCursor) "Cursor Sensitivity" else "Draw Sensitivity",
+            "${"%.1f".format(cursorSensitivity)}x",
+            cursorSensitivity,
+            { viewModel.setCursorSensitivity(it) },
+            0.1f..1.0f
+        )
     }
 }
 

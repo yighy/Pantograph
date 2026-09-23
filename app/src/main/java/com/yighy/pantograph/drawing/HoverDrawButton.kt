@@ -75,9 +75,7 @@ fun HoverDrawButton(
     fabSizeSetting: Float,
     initialOffsetX: Float,
     initialOffsetY: Float,
-    onPositionChanged: (Float, Float) -> Unit,
-    /** Opens the toolbar's Settings panel, for pinned tools whose own controls live there. */
-    onRequestSettingsPanel: () -> Unit = {}
+    onPositionChanged: (Float, Float) -> Unit
 ) {
     val fabDragThreshold by remember(viewModel) { viewModel.uiState.map { it.fabDragThreshold }.distinctUntilChanged() }.collectAsState(100f)
     val satelliteGateSensitivity by remember(viewModel) { viewModel.uiState.map { it.satelliteGateSensitivity }.distinctUntilChanged() }.collectAsState(1f)
@@ -984,7 +982,7 @@ fun HoverDrawButton(
         )
 
         val toolGateActions = pinnedTools.map { tool ->
-            CustomAccessibilityAction(tool.label) { tool.toggle(viewModel, onRequestSettingsPanel); true }
+            CustomAccessibilityAction(tool.label) { tool.toggle(viewModel); true }
         }
 
         Box(
@@ -1055,7 +1053,7 @@ fun HoverDrawButton(
                         toolGateCell = -1
                         tools.getOrNull(cell)?.let {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            it.toggle(viewModel, onRequestSettingsPanel)
+                            it.toggle(viewModel)
                         }
                     }
                 },

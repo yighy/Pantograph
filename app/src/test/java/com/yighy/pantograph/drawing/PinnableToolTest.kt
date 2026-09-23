@@ -11,6 +11,26 @@ import org.junit.Test
  */
 class PinnableToolTest {
 
+    // ---- the values tools carry ----
+
+    @Test
+    fun `the fill and both colour selections carry the same two values`() {
+        // They read one stored tolerance and one stored expand. Wand and colour select were
+        // once left out of the fill's handling entirely, which is how arming either from a
+        // satellite came to leave its settings buried.
+        val shared = listOf(ToolParams.Tolerance, ToolParams.Expand)
+        assertEquals(shared, PinnableTool.Fill.params)
+        assertEquals(shared, PinnableTool.Wand.params)
+        assertEquals(shared, PinnableTool.ColorSelect.params)
+    }
+
+    @Test
+    fun `the widest value is the longer end of the range`() {
+        assertEquals("500px", ToolParams.LazyRadius.widest)
+        assertEquals("12x", ToolParams.LoupeZoom.widest)
+        assertEquals("200", ToolParams.Tolerance.widest)
+    }
+
     // ---- persistence round-trip ----
 
     @Test

@@ -26,16 +26,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
  */
 enum class PinnableTool(
     val label: String,
-    val icon: ImageVector,
-    /**
-     * Whether switching this tool on should reveal the toolbar's Settings panel, because that
-     * is where its own controls live - tolerance for the fill, radius for lazy.
-     */
-    val opensSettings: Boolean = false
+    val icon: ImageVector
 ) {
-    Fill("Fill", Icons.Rounded.FormatColorFill, opensSettings = true),
+    Fill("Fill", Icons.Rounded.FormatColorFill),
     Gradient("Gradient", Icons.Rounded.Gradient),
-    Lazy("Lazy", Icons.Rounded.Cable, opensSettings = true),
+    Lazy("Lazy", Icons.Rounded.Cable),
     Recoil("Recoil", Icons.Rounded.Replay),
     /**
      * Puts the raised cursor on Draw Sensitivity too, so the scale never changes under the
@@ -46,12 +41,8 @@ enum class PinnableTool(
      * detail work and not for getting to it.
      */
     Fine("Fine", Icons.Rounded.CenterFocusStrong),
-    /**
-     * Opens the magnified window. Carries [opensSettings] for the same reason Fill and Lazy do:
-     * the zoom that makes it useful lives in the settings panel, and arriving at a window whose
-     * magnification cannot be found is arriving at the wrong one.
-     */
-    Loupe("Loupe", Icons.Rounded.ZoomIn, opensSettings = true),
+    /** Opens the magnified window. Its zoom is on its chip, like every tool's values. */
+    Loupe("Loupe", Icons.Rounded.ZoomIn),
     /**
      * Pinnable like the rest, which is what gives it a way *out*: the readout row draws every
      * armed tool with a cross on it, and that cross is the only control left on screen.
@@ -70,6 +61,22 @@ enum class PinnableTool(
      */
     Path("Path", Icons.Rounded.Timeline);
 
+    /**
+     * The values this tool carries, adjusted by dragging on its chip - the only place they
+     * live. Empty for a tool with nothing to set.
+     *
+     * Wand and colour select read the same tolerance and expand as the fill. They were given
+     * none of the fill's handling for a long time, which is how arming either from a satellite
+     * came to leave its settings in a panel it never asked to open.
+     */
+    val params: List<ToolParam>
+        get() = when (this) {
+            Lazy -> listOf(ToolParams.LazyRadius)
+            Loupe -> listOf(ToolParams.LoupeZoom)
+            Fill, Wand, ColorSelect -> listOf(ToolParams.Tolerance, ToolParams.Expand)
+            else -> emptyList()
+        }
+
     fun isActive(state: DrawingState): Boolean = when (this) {
         Fill -> state.drawingMode is DrawingMode.BucketFill
         Gradient -> state.drawingMode is DrawingMode.Gradient
@@ -86,16 +93,15 @@ enum class PinnableTool(
     }
 
     /**
-     * Mirrors what the matching entry in the tools menu does, including its toggle-off and the
-     * panel it opens. The callback is passed in because only the screen knows which panel is
-     * showing - without it the satellite armed a tool and left its settings buried, while the
-     * same tool tapped from the menu revealed them.
+     * Mirrors what the matching entry in the tools menu does, including its toggle-off.
+     *
+     * Arming a tool with values used to open the Settings panel as well, because that was where
+     * the values had their sliders. They are on the chip now, which appears the moment the tool
+     * is armed, so there is no panel to open - and one opening onto nothing about the tool
+     * would be a panel in the way.
      */
-    fun toggle(viewModel: DrawingViewModel, onRequestSettingsPanel: () -> Unit = {}) {
+    fun toggle(viewModel: DrawingViewModel) {
         val wasActive = isActive(viewModel.uiState.value)
-        // Read before the call: these are toggles, and switching one *off* must not pop open
-        // the panel holding its options.
-        if (!wasActive && opensSettings) onRequestSettingsPanel()
         when (this) {
             Fill -> viewModel.setBucketFillMode()
             Lazy -> viewModel.toggleLazyMode()
@@ -113,6 +119,7 @@ enum class PinnableTool(
     }
 
     companion object {
+
         /**
          * Four is the ceiling because the satellite picks between them on a blind sideways
          * drag, the same way the brush gate picks between its four parameters.

@@ -37,7 +37,16 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.onSizeChanged
@@ -229,7 +238,6 @@ fun DrawingScreen(
                     onSelectLayer = { editingLayerId = null },
                     onEditLayer = { editingLayerId = it },
                     onNavigateToSettings = onNavigateToSettings,
-                    onRequestSettingsPanel = { activePanel = ToolbarPanel.Settings },
                     imagePickerLauncher = imagePickerLauncher,
                     layerImportLauncher = layerImportLauncher
                 )
@@ -288,8 +296,7 @@ fun DrawingScreen(
                 onPositionChanged = { x, y -> 
                     offsetX = x
                     offsetY = y
-                },
-                onRequestSettingsPanel = { activePanel = ToolbarPanel.Settings }
+                }
             )
         }
 
@@ -315,20 +322,56 @@ private fun ActiveStateChip(
     container: Color = MaterialTheme.colorScheme.primaryContainer,
     content: Color = MaterialTheme.colorScheme.onPrimaryContainer,
     /** Null for a chip that performs an action rather than switching something off. */
-    trailing: ImageVector? = Icons.Rounded.Close
+    trailing: ImageVector? = Icons.Rounded.Close,
+    /** Shown after the label, for a chip whose tool carries values you can drag. */
+    values: List<ChipValue> = emptyList(),
+    /**
+     * Stands in for the plain click when the chip is also a gate. It has to take the tap as
+     * well: a clickable underneath would claim the pointer before a drag could be told apart.
+     */
+    gesture: Modifier? = null,
+    customActions: List<CustomAccessibilityAction> = emptyList(),
+    /**
+     * Where the active value sits in its range, 0..1, drawn as a fill from the start edge -
+     * the chip reads as a small slider. Null for a chip with no value.
+     */
+    fill: Float? = null,
+    fillColor: Color = Color.Unspecified,
+    /** The ways the chip can be dragged, shown before the cross. Null for a chip with no value. */
+    dragHint: ImageVector? = null,
+    border: BorderStroke? = null
 ) {
     Surface(
         shape = RoundedCornerShape(50),
         color = container,
         contentColor = content,
+        border = border,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
-            .clickable(onClick = onDismiss)
-            .semantics { contentDescription = description }
+            .then(gesture ?: Modifier.clickable(onClick = onDismiss))
+            .semantics {
+                contentDescription = description
+                // With no clickable there is no click action for a screen reader to find, so
+                // it is stated here. The tap means what it always meant.
+                if (gesture != null) onClick(label = "Turn off") { onDismiss(); true }
+                if (customActions.isNotEmpty()) this.customActions = customActions
+            }
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
+            modifier = Modifier
+                .then(
+                    if (fill == null) Modifier
+                    else Modifier.drawBehind {
+                        // Across the width rather than up the height, even though the drag is
+                        // vertical: a pill this short has a few pixels of height to show a value
+                        // in, and a hundred-odd of width.
+                        val w = size.width * fill.coerceIn(0f, 1f)
+                        val left = if (layoutDirection == LayoutDirection.Rtl) size.width - w else 0f
+                        drawRect(fillColor, topLeft = Offset(left, 0f), size = Size(w, size.height))
+                    }
+                )
+                .padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
             Spacer(Modifier.width(4.dp))
@@ -337,6 +380,48 @@ private fun ActiveStateChip(
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Medium
             )
+            if (values.isNotEmpty()) {
+                // Tabular figures, so the digits do not change width between themselves either.
+                val valueStyle = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum")
+                Spacer(Modifier.width(5.dp))
+                values.forEachIndexed { i, v ->
+                    if (i > 0) Spacer(Modifier.width(3.dp))
+                    // The value a vertical drag would change reads at full strength and the
+                    // other is dimmed, so the chip says which one it has hold of before you move.
+                    Row(
+                        modifier = Modifier
+                            .alpha(if (v.active) 1f else 0.55f)
+                            .then(
+                                if (v.fill == null) Modifier
+                                else Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .drawBehind {
+                                        // A faint track under the fill. A value low in its range
+                                        // - a tolerance of 12 out of 200 - is a sliver, and a
+                                        // sliver with nothing beside it reads as no gauge at all.
+                                        drawRect(fillColor.copy(alpha = fillColor.alpha * 0.4f))
+                                        val w = size.width * v.fill.coerceIn(0f, 1f)
+                                        val left = if (layoutDirection == LayoutDirection.Rtl) size.width - w else 0f
+                                        drawRect(fillColor, topLeft = Offset(left, 0f), size = Size(w, size.height))
+                                    }
+                                    .padding(horizontal = 4.dp)
+                            )
+                    ) {
+                        v.short?.let { Text("$it ", style = valueStyle) }
+                        // Held at the widest the value gets - see ToolParam.widest.
+                        Box {
+                            Text(v.widest, style = valueStyle, modifier = Modifier.alpha(0f))
+                            Text(v.text, style = valueStyle)
+                        }
+                    }
+                }
+            }
+            // Arrows for the drag, as the cross is for the tap: without them the only sign the
+            // chip could be dragged at all was a value that happened to be printed on it.
+            dragHint?.let {
+                Spacer(Modifier.width(4.dp))
+                Icon(it, contentDescription = null, modifier = Modifier.size(14.dp).alpha(0.8f))
+            }
             // The cross is the affordance: a chip that only named the state would read as a
             // label, and nobody taps a label. An action chip leads with its own glyph instead,
             // so it does not promise to turn anything off.
@@ -346,6 +431,203 @@ private fun ActiveStateChip(
             }
         }
     }
+}
+
+/** One value as a chip shows it. */
+private class ChipValue(
+    val short: String?,
+    val text: String,
+    val widest: String,
+    val active: Boolean,
+    /** Where this value sits in its range, 0..1, when it is drawn as a gauge of its own. */
+    val fill: Float? = null
+)
+
+/**
+ * A tool's chip. Tapping still turns the tool off. If the tool carries a value, dragging on the
+ * chip adjusts it the way a satellite gate adjusts a brush setting: the same response curve, dead
+ * zone and pinning at the ends, and the same sensitivity setting behind them - it is one gesture
+ * in the app, not two that feel slightly different.
+ *
+ * The chip is the right place because it is already exactly the set of things there is to set:
+ * a parameter matters while its tool is armed, which is precisely when its chip is showing, in
+ * fullscreen and out of it.
+ */
+@Composable
+private fun ToolStateChip(
+    tool: PinnableTool,
+    viewModel: DrawingViewModel
+) {
+    val onDismiss = { tool.toggle(viewModel) }
+    val params = tool.params
+    if (params.isEmpty()) {
+        ActiveStateChip(
+            icon = tool.icon,
+            label = tool.label,
+            description = "${tool.label} is on, tap to turn it off",
+            onDismiss = onDismiss
+        )
+        return
+    }
+
+    val current by remember(viewModel, tool) {
+        viewModel.uiState.map { st -> params.map { it.read(st) } }.distinctUntilChanged()
+    }.collectAsState(params.map { it.read(viewModel.uiState.value) })
+    // Which value a vertical drag changes. Kept between drags, the way the colour gate keeps its
+    // column, so a second adjustment starts on the value the last one left off on.
+    var selected by remember(tool) { mutableIntStateOf(0) }
+    val sensitivity by remember(viewModel) {
+        viewModel.uiState.map { it.satelliteGateSensitivity }.distinctUntilChanged()
+    }.collectAsState(1f)
+    val haptics = LocalHapticFeedback.current
+    var adjusting by remember { mutableStateOf(false) }
+    // The gesture outlives recompositions of the chip; reading the dismiss through this makes
+    // a tap act on the chip as it is when the finger lifts, not as it was when it landed.
+    val currentDismiss by rememberUpdatedState(onDismiss)
+
+    val gesture = Modifier.pointerInput(tool, sensitivity) {
+        awaitEachGesture {
+            val down = awaitFirstDown()
+            down.consume()
+            // Straight from the satellite gates, so the two cannot come to feel different.
+            val s = sensitivity.coerceIn(0.25f, 4f)
+            val deadZonePx = 12.dp.toPx() / s
+            val travelPx = 300.dp.toPx() / s
+            // Sideways picks the value, as the colour gate's columns do: same step, same
+            // hysteresis, same anchor clamping. A chip with a single value is a single column,
+            // and the maths simply never leaves it.
+            val colStepPx = 56.dp.toPx()
+            val colHysteresisPx = 10.dp.toPx()
+            val startIndex = selected.coerceIn(0, params.size - 1)
+            val minRel = -startIndex
+            val maxRel = params.size - 1 - startIndex
+            var index = startIndex
+            var committedRel = 0
+            var anchorX = down.position.x
+            var anchorValue = params[index].read(viewModel.uiState.value)
+            var anchorY = down.position.y
+            var dragging = false
+            var inDeadZone = true
+            // Only a real lift counts as a tap. A cancelled gesture also leaves the loop, and
+            // turning a tool off because the system took the pointer away is not a request.
+            var released = false
+            try {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) {
+                        released = true
+                        break
+                    }
+                    if (!dragging) {
+                        // Past the slop in any direction and this is a drag for good. One that
+                        // wandered back to where it started would otherwise lift as a tap, and
+                        // switch the tool off in the middle of adjusting it.
+                        if ((change.position - down.position).getDistance() <= viewConfiguration.touchSlop) continue
+                        dragging = true
+                        adjusting = true
+                    }
+                    change.consume()
+                    anchorX = GateMath.clampColumnAnchor(
+                        anchorX = anchorX,
+                        fingerX = change.position.x,
+                        colStepPx = colStepPx,
+                        minRel = minRel,
+                        maxRel = maxRel
+                    )
+                    val newRel = GateMath.nextColumn(
+                        committedRel, change.position.x - anchorX, colStepPx, colHysteresisPx
+                    )
+                    val newIndex = (startIndex + newRel).coerceIn(0, params.size - 1)
+                    if (newIndex != index) {
+                        index = newIndex
+                        committedRel = newRel.coerceIn(minRel, maxRel)
+                        selected = newIndex
+                        // Re-anchored on the new value, where the finger is now, so the vertical
+                        // travel spent on one value is not carried into the other.
+                        anchorY = change.position.y
+                        anchorValue = params[index].read(viewModel.uiState.value)
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        inDeadZone = true
+                    }
+                    val param = params[index]
+                    if (GateMath.effectiveDelta(anchorY - change.position.y, deadZonePx) == 0f) {
+                        inDeadZone = true
+                    } else if (inDeadZone) {
+                        inDeadZone = false
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    val stepped = GateMath.step(
+                        anchorValue = anchorValue,
+                        anchorPos = anchorY,
+                        currentPos = change.position.y,
+                        min = param.min,
+                        max = param.max,
+                        deadZonePx = deadZonePx,
+                        travelPx = travelPx
+                    )
+                    anchorValue = stepped.anchorValue
+                    anchorY = stepped.anchorPos
+                    param.write(viewModel, stepped.value)
+                }
+            } finally {
+                adjusting = false
+            }
+            if (released && !dragging) currentDismiss()
+        }
+    }
+
+    // A value you can only reach by dragging is a value a screen reader cannot reach at all.
+    // Tenth-of-range steps for each, as the colour gate offers for the same reason.
+    val actions = params.flatMap { param ->
+        val step = (param.max - param.min) / 10f
+        listOf(true, false).map { increase ->
+            CustomAccessibilityAction(
+                label = "${if (increase) "Increase" else "Decrease"} ${param.label.lowercase()}"
+            ) {
+                val now = param.read(viewModel.uiState.value)
+                param.write(viewModel, (now + if (increase) step else -step).coerceIn(param.min, param.max))
+                true
+            }
+        }
+    }
+
+    val readout = params.indices.joinToString(", ") { i ->
+        "${params[i].label.lowercase()} ${params[i].format(current[i])}"
+    }
+    val howTo = if (params.size == 1) "drag up or down to change it"
+        else "drag up or down to change ${params[selected].label.lowercase()}, sideways to pick another"
+
+    ActiveStateChip(
+        icon = tool.icon,
+        label = tool.label,
+        description = "${tool.label} is on, $readout. Tap to turn it off, $howTo",
+        onDismiss = onDismiss,
+        // The fill follows the value the drag is on. Stronger, and outlined, while held: the
+        // chip visibly has hold of the value rather than a number simply starting to move in
+        // the corner. The fill stays translucent throughout so one text colour reads over both
+        // parts of the chip - a solid fill would need a different one either side of its edge.
+        // One value fills the whole chip, the widest gauge it can have. Several each get a
+        // gauge of their own behind their own numbers: a single fill for the active one left
+        // the other value's position unshown until you switched to it.
+        fill = if (params.size == 1) (current[0] - params[0].min) / (params[0].max - params[0].min) else null,
+        fillColor = MaterialTheme.colorScheme.primary.copy(alpha = if (adjusting) 0.30f else 0.18f),
+        border = if (adjusting) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+        // Four ways where sideways picks between values, up and down where there is only one.
+        dragHint = if (params.size > 1) Icons.Rounded.OpenWith else Icons.Rounded.UnfoldMore,
+        values = params.mapIndexed { i, param ->
+            ChipValue(
+                // A lone value needs no name - the tool's is right beside it.
+                short = if (params.size > 1) param.short else null,
+                text = param.format(current[i]),
+                widest = param.widest,
+                active = params.size == 1 || i == selected,
+                fill = if (params.size > 1) (current[i] - param.min) / (param.max - param.min) else null
+            )
+        },
+        gesture = gesture,
+        customActions = actions
+    )
 }
 
 @Composable
@@ -359,7 +641,6 @@ fun LayersAndActionsSection(
     onEditLayer: (Long) -> Unit,
     onNavigateToSettings: () -> Unit,
     /** Opens the toolbar's Settings panel, for tools whose options live there. */
-    onRequestSettingsPanel: () -> Unit,
     // Array<String> because the reference picker is an OpenDocument contract: it takes a list
     // of mime types, unlike the single string GetContent expects.
     imagePickerLauncher: androidx.activity.result.ActivityResultLauncher<Array<String>>,
@@ -425,8 +706,7 @@ fun LayersAndActionsSection(
                     drawingMode = drawingMode,
                     isLazyModeActive = isLazyModeActive,
                     isRecoilActive = isRecoilActive,
-                    isFullscreen = isFullscreen,
-                    onRequestSettingsPanel = onRequestSettingsPanel
+                    isFullscreen = isFullscreen
                 )
 
                 // Vertical Separator
@@ -565,12 +845,10 @@ fun LayersAndActionsSection(
                 modifier = Modifier.padding(top = 8.dp)
             ) {
                 lastTools.forEach { tool ->
-                    ActiveStateChip(
-                        icon = tool.icon,
-                        label = tool.label,
-                        description = "${tool.label} is on, tap to turn it off",
-                        onDismiss = { tool.toggle(viewModel, onRequestSettingsPanel) }
-                    )
+                    // Keyed: a chip can hold a gesture in progress, and this row reorders as
+                    // tools come and go. Unkeyed, the gesture would stay with the slot and could
+                    // end up driving a neighbour's value.
+                    key(tool) { ToolStateChip(tool, viewModel) }
                 }
                 if (lastLocked) {
                     // Error colours, not the accent: the tools are things you turned on, this
@@ -642,8 +920,7 @@ private fun ToolsMenuButton(
     drawingMode: DrawingMode,
     isLazyModeActive: Boolean,
     isRecoilActive: Boolean,
-    isFullscreen: Boolean,
-    onRequestSettingsPanel: () -> Unit
+    isFullscreen: Boolean
 ) {
     var showTools by remember { mutableStateOf(false) }
     val pinnedTools by remember(viewModel) { viewModel.uiState.map { it.pinnedTools }.distinctUntilChanged() }.collectAsState(emptyList())
@@ -705,11 +982,7 @@ private fun ToolsMenuButton(
                         isPinned = pinnedTools.contains(PinnableTool.Fill),
                         onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Fill) }
                     ) {
-                        // Both of these toggle, so read the outcome before calling: turning a
-                        // tool off must not pop open the panel holding its options.
-                        val turningOn = !isBucketFill
                         viewModel.setBucketFillMode()
-                        if (turningOn) onRequestSettingsPanel()
                         showTools = false
                     }
                     ExtraToolItem(
@@ -741,9 +1014,7 @@ private fun ToolsMenuButton(
                         isPinned = pinnedTools.contains(PinnableTool.Lazy),
                         onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Lazy) }
                     ) {
-                        val turningOn = !isLazyModeActive
                         viewModel.toggleLazyMode()
-                        if (turningOn) onRequestSettingsPanel()
                         showTools = false
                     }
                     // Beside Lazy rather than among the paint tools: neither of these paints,
@@ -769,9 +1040,7 @@ private fun ToolsMenuButton(
                         isPinned = pinnedTools.contains(PinnableTool.Loupe),
                         onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Loupe) }
                     ) {
-                        val turningOn = !isLoupeActive
                         viewModel.toggleLoupe()
-                        if (turningOn) onRequestSettingsPanel()
                         showTools = false
                     }
                 }
