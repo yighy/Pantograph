@@ -770,8 +770,12 @@ fun HoverDrawButton(
                         val live = viewModel.uiState.value.selectedColor
                         val hsv = ColourGate.readFrom(live.red, live.green, live.blue, workingHsv)
                         val stepSize = (param.max - param.min) / 10f
-                        val next = (param.read(hsv) + if (increase) stepSize else -stepSize)
-                            .coerceIn(param.min, param.max)
+                        val raw = param.read(hsv) + if (increase) stepSize else -stepSize
+                        // Same rule as the drag: hue comes round, the others stop at their ends.
+                        // Clamping here left hue stuck at red for anyone driving the gate by
+                        // accessibility actions, after the gesture itself had stopped doing that.
+                        val next = if (param.wraps) GateMath.wrapInto(raw, param.min, param.max)
+                            else raw.coerceIn(param.min, param.max)
                         val updated = param.applyTo(hsv, next)
                         workingHsv = updated
                         val rgb = ColourGate.toRgb(updated)
