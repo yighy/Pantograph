@@ -52,8 +52,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
@@ -362,17 +367,10 @@ private fun ActiveStateChip(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .then(
-                    if (fill == null) Modifier
-                    else Modifier.drawBehind {
-                        // Across the width rather than up the height, even though the drag is
-                        // vertical: a pill this short has a few pixels of height to show a value
-                        // in, and a hundred-odd of width.
-                        val w = size.width * fill.coerceIn(0f, 1f)
-                        val left = if (layoutDirection == LayoutDirection.Rtl) size.width - w else 0f
-                        drawRect(fillColor, topLeft = Offset(left, 0f), size = Size(w, size.height))
-                    }
-                )
+                // Across the width rather than up the height, even though the drag is vertical:
+                // a pill this short has a few pixels of height to show a value in, and a
+                // hundred-odd of width.
+                .then(if (fill == null) Modifier else Modifier.gauge(fill, fillColor, track = false))
                 .padding(start = 8.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
         ) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
@@ -388,34 +386,7 @@ private fun ActiveStateChip(
                 Spacer(Modifier.width(5.dp))
                 values.forEachIndexed { i, v ->
                     if (i > 0) Spacer(Modifier.width(3.dp))
-                    // The value a vertical drag would change reads at full strength and the
-                    // other is dimmed, so the chip says which one it has hold of before you move.
-                    Row(
-                        modifier = Modifier
-                            .alpha(if (v.active) 1f else 0.55f)
-                            .then(
-                                if (v.fill == null) Modifier
-                                else Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .drawBehind {
-                                        // A faint track under the fill. A value low in its range
-                                        // - a tolerance of 12 out of 200 - is a sliver, and a
-                                        // sliver with nothing beside it reads as no gauge at all.
-                                        drawRect(fillColor.copy(alpha = fillColor.alpha * 0.4f))
-                                        val w = size.width * v.fill.coerceIn(0f, 1f)
-                                        val left = if (layoutDirection == LayoutDirection.Rtl) size.width - w else 0f
-                                        drawRect(fillColor, topLeft = Offset(left, 0f), size = Size(w, size.height))
-                                    }
-                                    .padding(horizontal = 4.dp)
-                            )
-                    ) {
-                        v.short?.let { Text("$it ", style = valueStyle) }
-                        // Held at the widest the value gets - see ToolParam.widest.
-                        Box {
-                            Text(v.widest, style = valueStyle, modifier = Modifier.alpha(0f))
-                            Text(v.text, style = valueStyle)
-                        }
-                    }
+                    ValueSegment(v, fillColor, valueStyle, padding = 4.dp)
                 }
             }
             // Arrows for the drag, as the cross is for the tap: without them the only sign the
@@ -432,6 +403,118 @@ private fun ActiveStateChip(
                 Icon(it, contentDescription = null, modifier = Modifier.size(13.dp))
             }
         }
+    }
+}
+
+/**
+ * Draws where a value sits in its range behind whatever this modifies, filling from the start
+ * edge. [track] adds a faint band under the whole width: a value low in its range - a tolerance
+ * of 12 out of 200 - is a sliver, and a sliver with nothing beside it reads as no gauge at all.
+ */
+private fun Modifier.gauge(fill: Float, color: Color, track: Boolean): Modifier = drawBehind {
+    if (track) drawRect(color.copy(alpha = color.alpha * 0.4f))
+    val w = size.width * fill.coerceIn(0f, 1f)
+    val left = if (layoutDirection == LayoutDirection.Rtl) size.width - w else 0f
+    drawRect(color, topLeft = Offset(left, 0f), size = Size(w, size.height))
+}
+
+/**
+ * One value, with its own gauge behind it when it has one. Shared by the chip and its readout
+ * so the two cannot come to show the same value differently.
+ */
+@Composable
+private fun ValueSegment(v: ChipValue, fillColor: Color, style: TextStyle, padding: Dp) {
+    Row(
+        modifier = Modifier
+            // The value a vertical drag would change reads at full strength and the other is
+            // dimmed, so it is clear which one is held before anything moves.
+            .alpha(if (v.active) 1f else 0.55f)
+            .then(
+                if (v.fill == null) Modifier
+                else Modifier
+                    .clip(RoundedCornerShape(50))
+                    .gauge(v.fill, fillColor, track = true)
+                    .padding(horizontal = padding)
+            )
+    ) {
+        v.short?.let { Text("$it ", style = style) }
+        // Held at the widest the value gets - see ToolParam.widest.
+        Box {
+            Text(v.widest, style = style, modifier = Modifier.alpha(0f))
+            Text(v.text, style = style)
+        }
+    }
+}
+
+/**
+ * The chip, larger and out from under the finger, for as long as its value is being dragged.
+ *
+ * The finger on a chip covers the very number it is changing, and the gauge with it. This is
+ * the same content by the same rules - values, gauges, which one is held - put where it can be
+ * read. See [ReadoutPlacement] for where that is.
+ */
+@Composable
+private fun ChipReadout(
+    icon: ImageVector,
+    label: String,
+    values: List<ChipValue>,
+    fill: Float?,
+    fillColor: Color
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+        shadowElevation = 6.dp
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .then(if (fill == null) Modifier else Modifier.gauge(fill, fillColor, track = false))
+                .padding(horizontal = 14.dp, vertical = 8.dp)
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.width(8.dp))
+            val style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum")
+            values.forEachIndexed { i, v ->
+                if (i > 0) Spacer(Modifier.width(6.dp))
+                ValueSegment(v, fillColor, style, padding = 6.dp)
+            }
+        }
+    }
+}
+
+/**
+ * Hands [ReadoutPlacement] the finger in window coordinates. A data class so the popup only
+ * repositions when the finger has actually moved: it compares providers to decide.
+ */
+private data class BesideFinger(
+    val fingerX: Float,
+    val fingerY: Float,
+    val gapPx: Int,
+    val marginPx: Int
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        // The finger arrives relative to the chip; the anchor is the chip, placed in the window.
+        val (x, y) = ReadoutPlacement.besideFinger(
+            fingerX = anchorBounds.left + fingerX.roundToInt(),
+            fingerY = anchorBounds.top + fingerY.roundToInt(),
+            width = popupContentSize.width,
+            height = popupContentSize.height,
+            windowWidth = windowSize.width,
+            windowHeight = windowSize.height,
+            gap = gapPx,
+            margin = marginPx
+        )
+        return IntOffset(x, y)
     }
 }
 
@@ -483,6 +566,9 @@ private fun ToolStateChip(
     }.collectAsState(1f)
     val haptics = LocalHapticFeedback.current
     var adjusting by remember { mutableStateOf(false) }
+    // Where the finger is on the chip, for the readout to sit beside it.
+    var fingerX by remember { mutableFloatStateOf(0f) }
+    var fingerY by remember { mutableFloatStateOf(0f) }
     // The gesture outlives recompositions of the chip; reading the dismiss through this makes
     // a tap act on the chip as it is when the finger lifts, not as it was when it landed.
     val currentDismiss by rememberUpdatedState(onDismiss)
@@ -514,6 +600,8 @@ private fun ToolStateChip(
             var anchorY = down.position.y
             var dragging = false
             var inDeadZone = true
+            fingerX = down.position.x
+            fingerY = down.position.y
             // Only a real lift counts as a tap. A cancelled gesture also leaves the loop, and
             // turning a tool off because the system took the pointer away is not a request.
             var released = false
@@ -534,6 +622,8 @@ private fun ToolStateChip(
                         adjusting = true
                     }
                     change.consume()
+                    fingerX = change.position.x
+                    fingerY = change.position.y
                     anchorX = GateMath.clampColumnAnchor(
                         anchorX = anchorX,
                         fingerX = change.position.x,
@@ -604,36 +694,60 @@ private fun ToolStateChip(
     val howTo = if (params.size == 1) "drag up or down to change it"
         else "drag up or down to change ${params[selected].label.lowercase()}, sideways to pick another"
 
-    ActiveStateChip(
-        icon = tool.icon,
-        label = tool.label,
-        description = "${tool.label} is on, $readout. Tap to turn it off, $howTo",
-        onDismiss = onDismiss,
-        // The fill follows the value the drag is on. Stronger, and outlined, while held: the
-        // chip visibly has hold of the value rather than a number simply starting to move in
-        // the corner. The fill stays translucent throughout so one text colour reads over both
-        // parts of the chip - a solid fill would need a different one either side of its edge.
-        // One value fills the whole chip, the widest gauge it can have. Several each get a
-        // gauge of their own behind their own numbers: a single fill for the active one left
-        // the other value's position unshown until you switched to it.
-        fill = if (params.size == 1) (current[0] - params[0].min) / (params[0].max - params[0].min) else null,
-        fillColor = MaterialTheme.colorScheme.primary.copy(alpha = if (adjusting) 0.30f else 0.18f),
-        border = if (adjusting) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
-        // Four ways where sideways picks between values, up and down where there is only one.
-        dragHint = if (params.size > 1) Icons.Rounded.OpenWith else Icons.Rounded.UnfoldMore,
-        values = params.mapIndexed { i, param ->
-            ChipValue(
-                // A lone value needs no name - the tool's is right beside it.
-                short = if (params.size > 1) param.short else null,
-                text = param.format(current[i]),
-                widest = param.widest,
-                active = params.size == 1 || i == selected,
-                fill = if (params.size > 1) (current[i] - param.min) / (param.max - param.min) else null
-            )
-        },
-        gesture = gesture,
-        customActions = actions
-    )
+    val fillColor = MaterialTheme.colorScheme.primary.copy(alpha = if (adjusting) 0.30f else 0.18f)
+    // One value fills the whole chip, the widest gauge it can have. Several each get a gauge of
+    // their own behind their own numbers: a single fill for the active one left the other
+    // value's position unshown until you switched to it.
+    val wholeFill = if (params.size == 1) (current[0] - params[0].min) / (params[0].max - params[0].min) else null
+    val shown = params.mapIndexed { i, param ->
+        ChipValue(
+            // A lone value needs no name - the tool's is right beside it.
+            short = if (params.size > 1) param.short else null,
+            text = param.format(current[i]),
+            widest = param.widest,
+            active = params.size == 1 || i == selected,
+            fill = if (params.size > 1) (current[i] - param.min) / (param.max - param.min) else null
+        )
+    }
+    val density = LocalDensity.current
+
+    // The box is the popup's anchor: it is exactly the chip, which is what the finger
+    // coordinates from the gesture are relative to.
+    Box {
+        ActiveStateChip(
+            icon = tool.icon,
+            label = tool.label,
+            description = "${tool.label} is on, $readout. Tap to turn it off, $howTo",
+            onDismiss = onDismiss,
+            // Stronger, and outlined, while held: the chip visibly has hold of the value rather
+            // than a number simply starting to move in the corner. Translucent throughout so one
+            // text colour reads over both parts - a solid fill would need a different one either
+            // side of its edge.
+            fill = wholeFill,
+            fillColor = fillColor,
+            border = if (adjusting) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+            // Four ways where sideways picks between values, up and down where there is only one.
+            dragHint = if (params.size > 1) Icons.Rounded.OpenWith else Icons.Rounded.UnfoldMore,
+            values = shown,
+            gesture = gesture,
+            customActions = actions
+        )
+        // Only while dragging: a tap is over before anyone could read it, and the chip's own
+        // numbers are visible whenever no finger is on them.
+        if (adjusting) {
+            Popup(
+                popupPositionProvider = BesideFinger(
+                    fingerX = fingerX,
+                    fingerY = fingerY,
+                    // Clear of the fingertip's width, not just its centre.
+                    gapPx = with(density) { 40.dp.roundToPx() },
+                    marginPx = with(density) { 8.dp.roundToPx() }
+                )
+            ) {
+                ChipReadout(tool.icon, tool.label, shown, wholeFill, fillColor)
+            }
+        }
+    }
 }
 
 @Composable
