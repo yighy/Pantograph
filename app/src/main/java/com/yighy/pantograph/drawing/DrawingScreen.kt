@@ -448,8 +448,8 @@ private class ChipValue(
 /**
  * A tool's chip. Tapping still turns the tool off. If the tool carries a value, dragging on the
  * chip adjusts it the way a satellite gate adjusts a brush setting: the same response curve, dead
- * zone and pinning at the ends, and the same sensitivity setting behind them - it is one gesture
- * in the app, not two that feel slightly different.
+ * zone and pinning at the ends, and the same sensitivity setting behind them. The travel is the
+ * one thing that differs, and deliberately - see the gesture below.
  *
  * The chip is the right place because it is already exactly the set of things there is to set:
  * a parameter matters while its tool is armed, which is precisely when its chip is showing, in
@@ -491,10 +491,14 @@ private fun ToolStateChip(
         awaitEachGesture {
             val down = awaitFirstDown()
             down.consume()
-            // Straight from the satellite gates, so the two cannot come to feel different.
+            // The dead zone and sensitivity come straight from the satellite gates. The travel
+            // is half theirs. A satellite sits mid-screen with room both ways; a chip sits at
+            // the top, so pushing up - raising the value - has only the gap to the screen edge
+            // to work with, and at the satellites' length that bought about a tenth of the range
+            // per push. Down, towards the canvas, has room to spare either way.
             val s = sensitivity.coerceIn(0.25f, 4f)
             val deadZonePx = 12.dp.toPx() / s
-            val travelPx = 300.dp.toPx() / s
+            val travelPx = 150.dp.toPx() / s
             // Sideways picks the value, as the colour gate's columns do: same step, same
             // hysteresis, same anchor clamping. A chip with a single value is a single column,
             // and the maths simply never leaves it.
