@@ -59,6 +59,14 @@ fun DrawingToolbar(
     // tool that was re-selected without changing state simply never reopened its panel.
     activePanel: ToolbarPanel,
     onActivePanelChange: (ToolbarPanel) -> Unit,
+    /**
+     * Strips this back to the panels an armed tool brings with it, and hides the bar entirely
+     * when no tool has brought one. Fullscreen sets it: the buttons belong to the chrome it is
+     * there to remove, the three panels behind them are reachable from the satellites, and a
+     * tool's values are on its chip - but nothing else reaches the path and selection commands,
+     * which is how fullscreen came to arm tools it gave you no way to finish using.
+     */
+    armedToolsOnly: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
@@ -81,6 +89,14 @@ fun DrawingToolbar(
             onActivePanelChange(ToolbarPanel.None)
         }
     }
+
+    // What an armed tool has put on screen. Only the command panels count: a tool's values
+    // travel on its chip, so none of them bring the bar back - the chip is already the control,
+    // and the bar would be the chrome fullscreen is there to remove.
+    val anyArmedPanel = isPathMode || isSelectionMode || isSelectionClosed
+    // An empty bar would be a pill of chrome floating over the drawing, which is the one thing
+    // fullscreen is for. Returning leaves nothing at all.
+    if (armedToolsOnly && !anyArmedPanel) return
 
     // Height and opacity both ride springs from the same family, so the fade lands with the
     // collapse instead of finishing early and leaving an empty box to close on its own.
@@ -154,7 +170,7 @@ fun DrawingToolbar(
             // row, grouped by separators: Brush/Color, then Settings, then Undo/Redo. They
             // used to be a centered group plus an end-pinned pair, but at the 48dp minimum
             // touch target those two alignments overlap on a ~360dp-wide screen.
-            Row(
+            if (!armedToolsOnly) Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
@@ -222,7 +238,7 @@ fun DrawingToolbar(
 
             // Quick Brush Panel - Smooth Slide
             AnimatedVisibility(
-                visible = activePanel == ToolbarPanel.Brush,
+                visible = !armedToolsOnly && activePanel == ToolbarPanel.Brush,
                 enter = visibilityAnimSpecEnter,
                 exit = visibilityAnimSpecExit
             ) {
@@ -234,7 +250,7 @@ fun DrawingToolbar(
 
             // Color Picker Panel - Smooth Slide
             AnimatedVisibility(
-                visible = activePanel == ToolbarPanel.Color,
+                visible = !armedToolsOnly && activePanel == ToolbarPanel.Color,
                 enter = visibilityAnimSpecEnter,
                 exit = visibilityAnimSpecExit
             ) {
@@ -243,7 +259,7 @@ fun DrawingToolbar(
 
             // Global Settings Panel - Smooth Slide
             AnimatedVisibility(
-                visible = activePanel == ToolbarPanel.Settings,
+                visible = !armedToolsOnly && activePanel == ToolbarPanel.Settings,
                 enter = visibilityAnimSpecEnter,
                 exit = visibilityAnimSpecExit
             ) {

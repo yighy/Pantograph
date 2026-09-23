@@ -183,8 +183,9 @@ fun DrawingScreen(
             // Reference Image Layer
             ReferenceImageOverlay(viewModel, viewportSize)
 
-            // Bottom Toolbar - Animated appearance
-            if (!isFullscreen) Box(
+            // Bottom Toolbar - Animated appearance. Present in fullscreen as well, where it
+            // carries only what an armed tool needs and disappears again with it.
+            Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(horizontal = 16.dp, vertical = 32.dp)
@@ -198,7 +199,8 @@ fun DrawingScreen(
                     viewModel = viewModel,
                     onOpenBrushStudio = { showBrushStudio = true },
                     activePanel = activePanel,
-                    onActivePanelChange = { activePanel = it }
+                    onActivePanelChange = { activePanel = it },
+                    armedToolsOnly = isFullscreen
                 )
             }
             
