@@ -4,7 +4,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -30,18 +29,17 @@ enum class GroupPosition { Only, First, Middle, Last }
 
 private val ButtonSize = 48.dp
 private val FullCorner = ButtonSize / 2
-/** Between two buttons of a group: enough to read as separate buttons, small enough to read as one group. */
-private val InnerCorner = 8.dp
+/** Between two buttons of a group: none, so the group reads as one pill. */
+private val InnerCorner = 0.dp
 
 /**
- * A row of buttons that read as one control: round at the group's two ends, nearly square where
- * two buttons meet, a hairline apart.
+ * A row of buttons that read as one control: a single pill, round at the group's two ends, the
+ * buttons butted against each other inside it.
  */
 @Composable
 fun ButtonGroup(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content
     )
