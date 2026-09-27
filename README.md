@@ -63,6 +63,7 @@ from the canvas.
 - Selection: lasso, rectangle, magic wand, colour select — move, transform, duplicate, invert.
 - Lazy mode, for smooth curves.
 - Recoil: the cursor returns to where each stroke began.
+- Anchor: while you hold the button, every line starts from the same point, which the finger on the button moves.
 - Fine: slow the cursor down even with the pen up.
 - Loupe: a magnified view of the canvas under the brush.
 
