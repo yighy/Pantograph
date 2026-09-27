@@ -25,7 +25,7 @@ Named after the 1821 drafting instrument that reproduced a drawing elsewhere as 
 
 Download the APK from [Releases](https://github.com/yighy/Pantograph/releases). Requires Android 12 or newer.
 
-To hear about new releases, turn on **Check For Updates** in Settings: the app then looks on
+To hear about new releases, turn on **Check for updates** in Settings: the app then looks on
 GitHub once a day and says so on its home screen, with a link to the release page. It downloads
 nothing itself, and pre-releases are left out.
 

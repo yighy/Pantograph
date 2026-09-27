@@ -1,13 +1,15 @@
 package com.yighy.pantograph
 
-import androidx.compose.foundation.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Gesture
-import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.SystemUpdate
-import androidx.compose.material.icons.rounded.TouchApp
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,7 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.yighy.pantograph.data.AppTheme
@@ -23,6 +25,15 @@ import com.yighy.pantograph.data.PreferenceManager
 import com.yighy.pantograph.data.ReleaseVersion
 import com.yighy.pantograph.data.UpdateChecker
 import kotlinx.coroutines.launch
+import java.text.DateFormat
+import java.util.Date
+import kotlin.math.abs
+
+/**
+ * How far the button has to be dragged before it moves rather than draws, as three plain choices.
+ * The setting is stored in pixels, and a slider in pixels was a number nobody could judge.
+ */
+private val MoveDistances = listOf("Short" to 50f, "Medium" to 100f, "Long" to 180f)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +53,7 @@ fun SettingsScreen(
     val keepUndoneStrokes by preferenceManager.keepUndoneStrokes.collectAsState(initial = false)
     val satelliteGateSensitivity by preferenceManager.satelliteGateSensitivity.collectAsState(initial = 1f)
     val checkForUpdates by preferenceManager.checkForUpdates.collectAsState(initial = false)
+    val lastUpdateCheck by preferenceManager.lastUpdateCheckTime.collectAsState(initial = 0L)
     val updateChecker = remember(preferenceManager) { UpdateChecker(preferenceManager) }
     // Only the result of a check asked for here; the automatic one reports on the home screen.
     var updateResult by remember { mutableStateOf<UpdateChecker.Result?>(null) }
@@ -54,17 +66,14 @@ fun SettingsScreen(
         } catch (e: Exception) {
             null
         }
-    }
+    } ?: BuildConfig.VERSION_NAME
     val scope = rememberCoroutineScope()
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            LargeTopAppBar(
-                // No style override: LargeTopAppBar keeps two title styles, one expanded and
-                // one collapsed, and a hard-coded style overrides both - the collapsed bar
-                // ended up rendering a 36sp title in 64dp of height.
+            TopAppBar(
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -80,251 +89,263 @@ fun SettingsScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(bottom = 24.dp)
         ) {
-            // Appearance Section
-            SettingsSection(title = "Appearance", icon = Icons.Rounded.Palette) {
-                SettingsRow(label = "App Theme") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AppTheme.entries.forEach { theme ->
-                            FilterChip(
-                                selected = appTheme == theme,
-                                onClick = { scope.launch { preferenceManager.setAppTheme(theme) } },
-                                // The chip stretches, so the label has to be told to centre
-                                // itself - it would otherwise sit against the start edge.
-                                label = {
-                                    Text(
-                                        text = theme.name.lowercase().replaceFirstChar { it.uppercase() },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        textAlign = TextAlign.Center
-                                    )
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = MaterialTheme.shapes.medium
-                            )
-                        }
-                    }
-                }
-                
-                SettingsToggleRow(
-                    label = "Hide Status Bar",
-                    subtitle = "Full screen immersion",
-                    checked = hideStatusBar,
-                    onCheckedChange = { scope.launch { preferenceManager.setHideStatusBar(it) } }
-                )
-
-                SettingsToggleRow(
-                    label = "Wallpaper Colors",
-                    subtitle = "Match theme to your wallpaper (Material You)",
-                    checked = dynamicColor,
-                    onCheckedChange = { scope.launch { preferenceManager.setDynamicColor(it) } }
-                )
-            }
-
-            // Drawing Controls Section
-            SettingsSection(title = "Drawing Controls", icon = Icons.Rounded.Gesture) {
-                SettingsSliderRow(
-                    label = "Undo History Limit",
-                    value = historyLimit.toFloat(),
-                    valueLabel = "$historyLimit actions",
-                    range = 1f..20f,
-                    steps = 18,
-                    onValueChange = { scope.launch { preferenceManager.setHistoryLimit(it.toInt()) } }
-                )
-
-                SettingsSliderRow(
-                    label = "Cursor Thickness",
-                    value = cursorThickness,
-                    valueLabel = String.format("%.1f px", cursorThickness),
-                    range = 0.5f..5.0f,
-                    onValueChange = { scope.launch { preferenceManager.setCursorThickness(it) } }
-                )
-
-                SettingsToggleRow(
-                    label = "Offscreen Cursor Arrow",
-                    subtitle = "Edge arrow pointing at the cursor when it leaves the screen",
-                    checked = offscreenCursorArrow,
-                    onCheckedChange = { scope.launch { preferenceManager.setOffscreenCursorArrow(it) } }
-                )
-
-                SettingsToggleRow(
-                    label = "Undo Returns The Cursor",
-                    subtitle = "Undoing a stroke walks the cursor back to where that stroke started",
-                    checked = undoRestoresCursor,
-                    onCheckedChange = { scope.launch { preferenceManager.setUndoRestoresCursor(it) } }
-                )
-
-                SettingsToggleRow(
-                    label = "Keep Undone Strokes",
-                    subtitle = "Undone strokes collect on a locked Traces layer to draw over. Never exported; clear it from the chip at the top",
-                    checked = keepUndoneStrokes,
-                    onCheckedChange = { scope.launch { preferenceManager.setKeepUndoneStrokes(it) } }
-                )
-            }
-
-            // Interaction Section
-            SettingsSection(title = "Interaction", icon = Icons.Rounded.TouchApp) {
-                SettingsSliderRow(
-                    label = "Button Drag Threshold",
-                    value = fabDragThreshold,
-                    valueLabel = "${fabDragThreshold.toInt()} px",
-                    range = 0f..250f,
-                    onValueChange = { scope.launch { preferenceManager.setFabDragThreshold(it) } }
-                )
-
-                SettingsSliderRow(
-                    label = "Main Button Size",
-                    value = fabSize,
-                    valueLabel = "${fabSize.toInt()} dp",
-                    range = 40f..120f,
-                    onValueChange = { scope.launch { preferenceManager.setFabSize(it) } }
-                )
-
-                SettingsSliderRow(
-                    label = "Satellite Sensitivity",
-                    value = satelliteGateSensitivity,
-                    valueLabel = String.format("%.1fx", satelliteGateSensitivity),
-                    range = 0.25f..2.0f,
-                    onValueChange = { scope.launch { preferenceManager.setSatelliteGateSensitivity(it) } }
-                )
-            }
-            
-            SettingsSection(title = "Updates", icon = Icons.Rounded.SystemUpdate) {
-                SettingsToggleRow(
-                    label = "Check For Updates",
-                    subtitle = "Once a day, asks GitHub for the latest release and says so on the home screen. Nothing is downloaded",
-                    checked = checkForUpdates,
-                    onCheckedChange = { scope.launch { preferenceManager.setCheckForUpdates(it) } }
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = when (val r = updateResult) {
-                            null -> if (checking) "Checking..." else "Installed: ${versionName ?: BuildConfig.VERSION_NAME}"
-                            is UpdateChecker.Result.Available -> "Version ${r.tag.removePrefix("v")} is available"
-                            UpdateChecker.Result.UpToDate -> "You have the latest version"
-                            UpdateChecker.Result.Failed -> "Couldn't reach GitHub"
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f)
-                    )
-                    val available = updateResult as? UpdateChecker.Result.Available
-                    if (available != null) {
-                        FilledTonalButton(onClick = { uriHandler.openUri(ReleaseVersion.pageUrl(available.tag)) }) {
-                            Text("View")
-                        }
-                    } else {
-                        // Asked for by hand, so it goes out even with the automatic check off.
-                        OutlinedButton(
-                            enabled = !checking,
-                            onClick = {
-                                checking = true
-                                updateResult = null
-                                scope.launch {
-                                    updateResult = updateChecker.check()
-                                    checking = false
-                                }
-                            }
-                        ) {
-                            Text("Check Now")
-                        }
-                    }
-                }
-            }
-
-            versionName?.let {
-                Text(
-                    text = "${stringResource(R.string.app_name)} $it",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            Spacer(modifier = Modifier.height(40.dp))
-        }
-    }
-}
-
-@Composable
-fun SettingsSection(title: String, icon: androidx.compose.ui.graphics.vector.ImageVector, content: @Composable ColumnScope.() -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-            // Sentence case, no forced tracking: all-caps with letterSpacing is the Material 2
-            // "overline" idiom that M3 dropped. The colour and the leading icon already
-            // separate this from the rows below.
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary
+            SectionHeader("Appearance")
+            ChoiceRow(
+                label = "Theme",
+                options = listOf(AppTheme.SYSTEM, AppTheme.LIGHT, AppTheme.DARK),
+                selected = appTheme,
+                optionLabel = { it.name.lowercase().replaceFirstChar { c -> c.uppercase() } },
+                onSelect = { scope.launch { preferenceManager.setAppTheme(it) } }
             )
-        }
-        Surface(
-            shape = MaterialTheme.shapes.extraLarge,
-            color = MaterialTheme.colorScheme.surfaceContainerLow,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                content()
+            SwitchRow("Dynamic color", subtitle = "From your wallpaper", checked = dynamicColor) {
+                scope.launch { preferenceManager.setDynamicColor(it) }
             }
+            SwitchRow("Hide status bar", checked = hideStatusBar) {
+                scope.launch { preferenceManager.setHideStatusBar(it) }
+            }
+
+            SectionHeader("Drawing")
+            StepperRow(
+                label = "Undo history",
+                value = historyLimit,
+                range = 1..20,
+                onChange = { scope.launch { preferenceManager.setHistoryLimit(it) } }
+            )
+            SliderRow(
+                label = "Cursor thickness",
+                valueLabel = "%.1f".format(cursorThickness),
+                value = cursorThickness,
+                range = 0.5f..5.0f,
+                onChange = { scope.launch { preferenceManager.setCursorThickness(it) } }
+            )
+            SwitchRow(
+                "Offscreen cursor arrow",
+                subtitle = "Points to the cursor when it's off screen",
+                checked = offscreenCursorArrow
+            ) { scope.launch { preferenceManager.setOffscreenCursorArrow(it) } }
+            SwitchRow(
+                "Undo returns the cursor",
+                subtitle = "Back to where the stroke began",
+                checked = undoRestoresCursor
+            ) { scope.launch { preferenceManager.setUndoRestoresCursor(it) } }
+            SwitchRow(
+                "Keep undone strokes",
+                subtitle = "Leaves them faintly, to redraw over",
+                checked = keepUndoneStrokes
+            ) { scope.launch { preferenceManager.setKeepUndoneStrokes(it) } }
+
+            SectionHeader("Button")
+            SliderRow(
+                label = "Size",
+                valueLabel = null,
+                value = fabSize,
+                range = 40f..120f,
+                onChange = { scope.launch { preferenceManager.setFabSize(it) } }
+            )
+            ChoiceRow(
+                label = "Move distance",
+                subtitle = "How far to drag before the button moves",
+                options = MoveDistances.map { it.second },
+                // The stored value can sit between the choices, from before they existed: the
+                // nearest one is what it shows as.
+                selected = MoveDistances.minBy { abs(it.second - fabDragThreshold) }.second,
+                optionLabel = { px -> MoveDistances.first { it.second == px }.first },
+                onSelect = { scope.launch { preferenceManager.setFabDragThreshold(it) } }
+            )
+            SliderRow(
+                label = "Satellite sensitivity",
+                valueLabel = "%.1fx".format(satelliteGateSensitivity),
+                value = satelliteGateSensitivity,
+                range = 0.25f..2.0f,
+                onChange = { scope.launch { preferenceManager.setSatelliteGateSensitivity(it) } }
+            )
+
+            SectionHeader("Updates")
+            SwitchRow(
+                "Check for updates",
+                subtitle = "Once a day, on GitHub",
+                checked = checkForUpdates
+            ) { scope.launch { preferenceManager.setCheckForUpdates(it) } }
+            val available = updateResult as? UpdateChecker.Result.Available
+            ActionRow(
+                label = if (available != null) "View release" else "Check now",
+                subtitle = when (val r = updateResult) {
+                    null -> when {
+                        checking -> "Checking..."
+                        lastUpdateCheck <= 0L -> "Never checked"
+                        else -> "Last checked " + DateFormat
+                            .getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT)
+                            .format(Date(lastUpdateCheck))
+                    }
+                    is UpdateChecker.Result.Available -> "Version ${r.tag.removePrefix("v")} is available"
+                    UpdateChecker.Result.UpToDate -> "You have the latest version"
+                    UpdateChecker.Result.Failed -> "Couldn't reach GitHub"
+                },
+                enabled = !checking
+            ) {
+                if (available != null) {
+                    uriHandler.openUri(ReleaseVersion.pageUrl(available.tag))
+                } else {
+                    // Asked for by hand, so it goes out even with the automatic check off.
+                    checking = true
+                    updateResult = null
+                    scope.launch {
+                        updateResult = updateChecker.check()
+                        checking = false
+                    }
+                }
+            }
+
+            SectionHeader("About")
+            ValueRow("Version", versionName)
         }
     }
 }
 
+// ---- rows ----
+// One line each where the setting allows it: the label on the left, what it is set to on the
+// right. A subtitle only where the label alone does not say what the setting does.
+
 @Composable
-fun SettingsRow(label: String, content: @Composable () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(label, style = MaterialTheme.typography.titleMedium)
-        content()
-    }
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 24.dp, bottom = 4.dp)
+    )
 }
 
 @Composable
-fun SettingsToggleRow(label: String, subtitle: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun RowLabel(label: String, subtitle: String?, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        if (subtitle != null) {
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+private val RowModifier = Modifier
+    .fillMaxWidth()
+    .heightIn(min = 56.dp)
+
+/** The whole row toggles, not just the switch: it is the bigger target, and says the same. */
+@Composable
+private fun SwitchRow(label: String, subtitle: String? = null, checked: Boolean, onChange: (Boolean) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        modifier = RowModifier
+            .toggleable(value = checked, role = Role.Switch, onValueChange = onChange)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.titleMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        RowLabel(label, subtitle, Modifier.weight(1f).padding(end = 16.dp))
+        Switch(checked = checked, onCheckedChange = null)
+    }
+}
+
+/** A choice among a few, shown as its current value and picked from a menu. */
+@Composable
+private fun <T> ChoiceRow(
+    label: String,
+    subtitle: String? = null,
+    options: List<T>,
+    selected: T,
+    optionLabel: (T) -> String,
+    onSelect: (T) -> Unit
+) {
+    var open by remember { mutableStateOf(false) }
+    Row(
+        modifier = RowModifier
+            .clickable(role = Role.DropdownList) { open = true }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RowLabel(label, subtitle, Modifier.weight(1f).padding(end = 16.dp))
+        Box {
+            Text(optionLabel(selected), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+                options.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(optionLabel(option)) },
+                        onClick = {
+                            open = false
+                            onSelect(option)
+                        },
+                        trailingIcon = if (option == selected) {
+                            { Icon(Icons.Rounded.Check, contentDescription = "Selected") }
+                        } else null
+                    )
+                }
+            }
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/** A small whole number, stepped one at a time. */
+@Composable
+private fun StepperRow(label: String, value: Int, range: IntRange, onChange: (Int) -> Unit) {
+    Row(
+        modifier = RowModifier.padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RowLabel(label, null, Modifier.weight(1f))
+        IconButton(onClick = { onChange(value - 1) }, enabled = value > range.first) {
+            Icon(Icons.Rounded.Remove, contentDescription = "Fewer")
+        }
+        Text(
+            "$value",
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.widthIn(min = 24.dp),
+            textAlign = TextAlign.Center
+        )
+        IconButton(onClick = { onChange(value + 1) }, enabled = value < range.last) {
+            Icon(Icons.Rounded.Add, contentDescription = "More")
+        }
+    }
+}
+
+/** For settings judged by feel rather than by number. */
+@Composable
+private fun SliderRow(
+    label: String,
+    valueLabel: String?,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RowLabel(label, null, Modifier.weight(1f))
+            if (valueLabel != null) {
+                Text(valueLabel, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Slider(value = value, onValueChange = onChange, valueRange = range)
     }
 }
 
 @Composable
-fun SettingsSliderRow(label: String, value: Float, valueLabel: String, range: ClosedFloatingPointRange<Float>, steps: Int = 0, onValueChange: (Float) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(label, style = MaterialTheme.typography.titleMedium)
-            // The value stays distinguishable through colour, not weight.
-            Text(valueLabel, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-        }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = range,
-            steps = steps
-        )
+private fun ActionRow(label: String, subtitle: String?, enabled: Boolean = true, onClick: () -> Unit) {
+    Row(
+        modifier = RowModifier
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RowLabel(label, subtitle, Modifier.weight(1f))
+    }
+}
+
+@Composable
+private fun ValueRow(label: String, value: String) {
+    Row(
+        modifier = RowModifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RowLabel(label, null, Modifier.weight(1f))
+        Text(value, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

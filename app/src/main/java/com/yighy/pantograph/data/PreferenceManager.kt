@@ -455,6 +455,11 @@ class PreferenceManager(private val context: Context) {
 
     suspend fun lastUpdateCheck(): Long = context.dataStore.data.first()[LAST_UPDATE_CHECK_KEY] ?: 0L
 
+    /** When GitHub last answered, in epoch milliseconds; 0 before it ever has. */
+    val lastUpdateCheckTime: Flow<Long> = context.dataStore.data.map { preferences ->
+        preferences[LAST_UPDATE_CHECK_KEY] ?: 0L
+    }.distinctUntilChanged()
+
     suspend fun recordLatestRelease(tag: String?, checkedAt: Long) {
         context.dataStore.edit { preferences ->
             if (tag == null) preferences.remove(LATEST_RELEASE_KEY) else preferences[LATEST_RELEASE_KEY] = tag
