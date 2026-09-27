@@ -299,6 +299,27 @@ data class DrawingState(
      */
     val isRecoilActive: Boolean = false,
     /**
+     * Holding the button arms the pen instead of lowering it: from then until it is let go, each
+     * touch of the drawing finger is one line, and every line starts where the first one of the
+     * hold began. See the Anchor section of DrawingViewModel.
+     *
+     * Not persisted, like [isRecoilActive]: which of the two a drawing wants changes within a
+     * drawing, not between them.
+     */
+    val isAnchorActive: Boolean = false,
+    /**
+     * The button is held with [isAnchorActive] on: the pen is armed, and goes down only while
+     * the drawing finger is on the glass. Lives in the state rather than the view model because
+     * the button and the satellites have to see it - see [isPenEngaged].
+     */
+    val isAnchorArmed: Boolean = false,
+    /**
+     * Where every line of the current hold starts. Set where the cursor is when the button goes
+     * down, and null again once it is let go. In the state rather than the view model so it can be drawn: the
+     * finger on the button moves it, and a point you steer without seeing is a guess.
+     */
+    val anchorPoint: CursorAnchor? = null,
+    /**
      * Extends Draw Sensitivity to the raised pen, rather than letting it bite only while drawing.
      *
      * Two things come with that. The scale stops changing under the finger at pen-down; and
@@ -410,8 +431,12 @@ data class DrawingState(
      * painting - but everything about how the button *looks and behaves while held* should be
      * the same either way: it presses in, the satellites get out of the way, and the gates stop
      * accepting a stray second finger. What stays keyed to isPenDown is the drawing itself.
+     *
+     * An armed anchor counts for the same reason. Its pen is up between lines, and keyed to
+     * isPenDown the button would have sprung back and the satellites faded in and out with
+     * every line of a hold that never let go of the button.
      */
-    val isPenEngaged: Boolean get() = isPenDown || grabbedPathPoint >= 0
+    val isPenEngaged: Boolean get() = isPenDown || grabbedPathPoint >= 0 || isAnchorArmed
 
     /**
      * Index of the path point the cursor is close enough to pick up, or -1.

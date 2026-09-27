@@ -153,6 +153,15 @@ class HistoryCoordinator(
     }
 
     /**
+     * Stops a glide in flight whether or not it yields - for a caller about to put the cursor
+     * somewhere itself, who needs the glide not to carry on writing positions over it.
+     */
+    fun stopCursorGlide() {
+        cursorJob?.cancel()
+        cursorJob = null
+    }
+
+    /**
      * Walks the cursor to [anchor] over [durationMs].
      *
      * Public because undo is no longer the only caller: the recoil setting sends the cursor

@@ -177,6 +177,9 @@ fun CursorLoupe(viewModel: DrawingViewModel, viewport: Size) {
                     // otherwise a selection outline reads several times too thick in here.
                     ToolPreviewLayer(viewModel, viewScale = effectiveZoom)
                     SelectionLayer(viewModel, viewScale = effectiveZoom, crisp = true)
+                    // The anchor is what you are placing when the finger on the button moves,
+                    // so it belongs in the window that shows detail - unlike the cursor.
+                    AnchorLayer(viewModel, viewScale = effectiveZoom)
                 }
 
                 LoupeCrosshair(isPenDown)

@@ -62,10 +62,14 @@ fun DrawingCanvas(
                     val down = awaitFirstDown(requireUnconsumed = true)
                     var totalDrag = Offset.Zero
                     var isMultiTouch = false
+                    // The anchor needs to know: with it armed, each contact is one line.
+                    viewModel.setDrawFinger(true)
                     
                     do {
                         val event = awaitPointerEvent()
                         if (event.changes.size > 1) {
+                            // A second finger turns this into a pinch, which draws nothing.
+                            if (!isMultiTouch) viewModel.setDrawFinger(false)
                             isMultiTouch = true
                             val zoom = event.calculateZoom()
                             val pan = event.calculatePan()
@@ -85,6 +89,7 @@ fun DrawingCanvas(
                             }
                         }
                     } while (event.changes.any { it.pressed })
+                    viewModel.setDrawFinger(false)
                     
                     if (!isMultiTouch && totalDrag.getDistance() < 10f) {
                         viewModel.togglePen()
@@ -144,6 +149,10 @@ fun DrawingCanvas(
 
                 // Selection outline & floating selection preview
                 SelectionLayer(viewModel)
+
+                // Where the next line of an armed anchor starts. Under the cursor, so the
+                // cursor reads on top when it is waiting on it.
+                AnchorLayer(viewModel)
 
                 // Cursor Overlay - Recomposes on every move
                 CursorLayer(viewModel)
@@ -583,6 +592,46 @@ fun SelectionLayer(viewModel: DrawingViewModel, viewScale: Float? = null, crisp:
             drawPath(path, Color.White, style = Stroke(sw, pathEffect = PathEffect.dashPathEffect(dash, antsPhase * invScale)))
             drawPath(path, Color.Black, style = Stroke(sw, pathEffect = PathEffect.dashPathEffect(dash, (antsPhase + 8f) * invScale)))
         }
+    }
+}
+
+/**
+ * Where the next line of an armed anchor starts: a ring with a dot, so it cannot be mistaken for
+ * the cursor's cross even when the cursor is sitting on it between lines.
+ *
+ * A layer of its own rather than part of [CursorLayer], because the loupe leaves the cursor out
+ * - at its magnification the cursor would hide what it points at - and the anchor is precisely
+ * what you want to see magnified while you nudge it into place.
+ *
+ * At the brush's end of the anchor, since that is where the next line's paint will start.
+ * Difference, like the cursor, so it stays visible over whatever has been drawn under it, and
+ * drawn at the thickness the cursor is set to, so a cursor made heavier to be seen brings this
+ * with it.
+ */
+@Composable
+fun AnchorLayer(viewModel: DrawingViewModel, viewScale: Float? = null) {
+    val anchorPoint by remember(viewModel) { viewModel.uiState.map { it.anchorPoint }.distinctUntilChanged() }.collectAsState(null)
+    val canvasScale by remember(viewModel) { viewModel.uiState.map { it.canvasScale }.distinctUntilChanged() }.collectAsState(1f)
+    val cursorThickness by remember(viewModel) { viewModel.uiState.map { it.cursorThickness }.distinctUntilChanged() }.collectAsState(1.0f)
+    val anchor = anchorPoint ?: return
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        // Sized by the inverse of the scale it is drawn at, so it keeps one size on screen -
+        // which inside the loupe is the loupe's scale, not the canvas's.
+        val invScale = 1f / (viewScale ?: canvasScale).coerceAtLeast(0.01f)
+        drawCircle(
+            color = Color.White,
+            radius = 6.dp.toPx() * invScale,
+            center = anchor.brush,
+            style = Stroke(width = cursorThickness * invScale),
+            blendMode = BlendMode.Difference
+        )
+        drawCircle(
+            color = Color.White,
+            radius = 1.5.dp.toPx() * invScale,
+            center = anchor.brush,
+            blendMode = BlendMode.Difference
+        )
     }
 }
 

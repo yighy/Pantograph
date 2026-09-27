@@ -10,6 +10,7 @@ import androidx.compose.material.icons.rounded.Polyline
 import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material.icons.rounded.Cable
 import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.Anchor
 import androidx.compose.material.icons.rounded.Replay
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material.icons.rounded.CenterFocusStrong
@@ -32,6 +33,12 @@ enum class PinnableTool(
     Gradient("Gradient", Icons.Rounded.Gradient),
     Lazy("Lazy", Icons.Rounded.Cable),
     Recoil("Recoil", Icons.Rounded.Replay),
+    /**
+     * Recoil's two-handed successor, tried beside it before one replaces the other. The return
+     * point is fixed for the whole hold rather than moving with each stroke, and the button never
+     * has to be let go between lines.
+     */
+    Anchor("Anchor", Icons.Rounded.Anchor),
     /**
      * Puts the raised cursor on Draw Sensitivity too, so the scale never changes under the
      * finger at pen-down.
@@ -82,6 +89,7 @@ enum class PinnableTool(
         Gradient -> state.drawingMode is DrawingMode.Gradient
         Lazy -> state.isLazyModeActive
         Recoil -> state.isRecoilActive
+        Anchor -> state.isAnchorActive
         Fine -> state.isFineCursor
         Loupe -> state.isLoupeActive
         Fullscreen -> state.isFullscreen
@@ -106,6 +114,7 @@ enum class PinnableTool(
             Fill -> viewModel.setBucketFillMode()
             Lazy -> viewModel.toggleLazyMode()
             Recoil -> viewModel.toggleRecoil()
+            Anchor -> viewModel.toggleAnchor()
             Fine -> viewModel.toggleFineCursor()
             Loupe -> viewModel.toggleLoupe()
             Fullscreen -> viewModel.toggleFullscreen()

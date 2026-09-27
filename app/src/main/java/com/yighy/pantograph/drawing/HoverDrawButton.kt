@@ -80,7 +80,6 @@ fun HoverDrawButton(
     val fabDragThreshold by remember(viewModel) { viewModel.uiState.map { it.fabDragThreshold }.distinctUntilChanged() }.collectAsState(100f)
     val satelliteGateSensitivity by remember(viewModel) { viewModel.uiState.map { it.satelliteGateSensitivity }.distinctUntilChanged() }.collectAsState(1f)
     val isEyeDropperMode by remember(viewModel) { viewModel.uiState.map { it.isEyeDropperMode }.distinctUntilChanged() }.collectAsState(false)
-    val isPenDown by remember(viewModel) { viewModel.uiState.map { it.isPenDown }.distinctUntilChanged() }.collectAsState(false)
     // Held, whether or not that means painting - see DrawingState.isPenEngaged.
     val isPenEngaged by remember(viewModel) { viewModel.uiState.map { it.isPenEngaged }.distinctUntilChanged() }.collectAsState(false)
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
@@ -148,9 +147,74 @@ fun HoverDrawButton(
                 .pointerInput(fabDragThreshold) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
-                        viewModel.setPenDown(true)
-                        
-                        var gestureMode = 0 
+                        // Through pressPen rather than straight to the pen: with Anchor on, a
+                        // press arms the pen instead of lowering it.
+                        viewModel.pressPen()
+
+                        // With the anchor armed, the finger on the button has two jobs, told
+                        // apart the way a home screen tells using an icon from lifting it:
+                        // moving straight away steers the anchor, holding still first lifts the
+                        // button itself. The frequent one - nudging the anchor, many times a
+                        // series - gets the direct gesture; the rare one gets the deliberate one.
+                        if (viewModel.uiState.value.isAnchorArmed) {
+                            val deadline = down.uptimeMillis + viewConfiguration.longPressTimeoutMillis
+                            var lastTime = down.uptimeMillis
+                            // Past the long-press window, one way or the other.
+                            var decided = false
+                            var movingButton = false
+                            // Past a touch slop: a finger resting on the button is never quite
+                            // still, and without the margin its tremor would walk the anchor
+                            // across the canvas a fraction of a pixel at a time.
+                            var steering = false
+                            var slop = Offset.Zero
+                            while (true) {
+                                val event = if (!decided) {
+                                    withTimeoutOrNull((deadline - lastTime).coerceAtLeast(0L)) { awaitPointerEvent() }
+                                } else {
+                                    awaitPointerEvent()
+                                }
+                                if (event == null) {
+                                    decided = true
+                                    // Held still through the delay. That lifts the button only if
+                                    // nothing has been drawn in this hold yet: a pause between two
+                                    // lines, button held while you think, is not a request to
+                                    // move it - and would otherwise unhook it mid-series.
+                                    val drawn = viewModel.uiState.value.isPenDown ||
+                                        viewModel.getCurrentStrokeDistance() > 0f
+                                    if (!drawn) {
+                                        movingButton = true
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        // Disarms: the anchor goes with the hold it belonged to.
+                                        viewModel.releasePen()
+                                    }
+                                    continue
+                                }
+                                val change = event.changes.find { it.id == down.id } ?: break
+                                if (!change.pressed) break
+                                lastTime = change.uptimeMillis
+                                val step = change.position - change.previousPosition
+                                if (movingButton) {
+                                    change.consume()
+                                    localX = (localX + step.x).coerceIn(0f, screenWidth - fabSizePx)
+                                    localY = (localY + step.y).coerceIn(0f, screenHeight - fabSizePx)
+                                    onPositionChanged(localX, localY)
+                                    continue
+                                }
+                                if (!steering) {
+                                    slop += step
+                                    if (slop.getDistance() <= viewConfiguration.touchSlop) continue
+                                    steering = true
+                                    decided = true
+                                }
+                                change.consume()
+                                viewModel.moveAnchor(step)
+                            }
+                            if (movingButton) viewModel.saveFabPosition(localX, localY)
+                            else viewModel.releasePen()
+                            return@awaitEachGesture
+                        }
+
+                        var gestureMode = 0
                         
                         while (true) {
                             val event = awaitPointerEvent()
@@ -167,7 +231,7 @@ fun HoverDrawButton(
                                         // This branch silently discards the stroke you may
                                         // have thought you were drawing, so say so.
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        viewModel.setPenDown(false)
+                                        viewModel.releasePen()
                                         // Only abort stroke if we were actually drawing (not picking color or selecting)
                                         val isSelectionMode = drawingMode.isSelectionTool()
                                         if (drawingMode is DrawingMode.Path) {
@@ -196,7 +260,7 @@ fun HoverDrawButton(
                         }
                         
                         if (gestureMode == 1) viewModel.saveFabPosition(localX, localY)
-                        viewModel.setPenDown(false)
+                        viewModel.releasePen()
                     }
                 }
                 .size(fabSizeSetting.dp)
@@ -231,15 +295,17 @@ fun HoverDrawButton(
                 armed != null -> armed.third
                 else -> MaterialTheme.colorScheme.tertiaryContainer
             }
+            // Engaged rather than down, so an armed anchor keeps the pen glyph between lines
+            // instead of flicking back to the hand each time the drawing finger lifts.
             val fabIcon = armed?.first
-                ?: if (isPenDown) Icons.Default.Edit else Icons.Default.TouchApp
+                ?: if (isPenEngaged) Icons.Default.Edit else Icons.Default.TouchApp
             // The path tool is held to place rather than held to draw, so it says so: "Drawing"
             // would be describing a stroke that is not happening.
             val fabDescription = when {
                 drawingMode is DrawingMode.Path ->
                     if (isPenEngaged) "Placing a path point" else "Hold to place a path point"
                 armed != null -> armed.second
-                isPenDown -> "Drawing"
+                isPenEngaged -> "Drawing"
                 else -> "Hold to draw"
             }
 

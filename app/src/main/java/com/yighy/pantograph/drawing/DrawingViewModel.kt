@@ -309,6 +309,19 @@ class DrawingViewModel(
     // ============================ Cursor & pen ============================
 
     fun moveCursor(delta: Offset) {
+        val armedState = session.value
+        if (armedState.isAnchorArmed && drawFingerDown && !armedState.isPenDown) {
+            // A finger resting on the glass is never still, and with the anchor armed its tremor
+            // was enough to start a line - a stray mark, and a hold that read as "drawing", so
+            // the button would not come loose on a long press. Until the finger has actually
+            // travelled, it is resting: no line, and the cursor, which is waiting on the anchor,
+            // stays with it. Measured as a displacement, not a sum, so jitter back and forth
+            // cancels out instead of adding up to a line on its own. In screen pixels, like the
+            // system's slop it is compared with.
+            anchorStartTravel += delta * armedState.canvasScale
+            if (anchorStartTravel.getDistance() < anchorStartSlopPx) return
+            startAnchorLine()
+        }
         history.cancelCursorGlide()
         val state = session.value
         val movement = engine.smoothMovement(delta, state)
@@ -401,6 +414,9 @@ class DrawingViewModel(
     }
 
     fun togglePen() {
+        // With the anchor armed, the drawing finger's touches are the lines themselves. A tap
+        // is a line too short to see, not a request to latch the pen.
+        if (session.value.isAnchorArmed) return
         // In the path tool the pen is a hold, so there is no latched state to invert. The
         // canvas tap has no press and release of its own to offer, so it alternates instead:
         // hold the button for a placement you can adjust, tap the canvas for a quick one.
@@ -632,7 +648,12 @@ class DrawingViewModel(
         }
     }
 
-    fun getCurrentStrokeDistance(): Float = engine.strokeDistance
+    // Across the whole hold while the anchor is armed. The button reads this at the end of a
+    // long press to decide whether the hold is still free to lift the button, and between two
+    // lines the stroke's own count is back at zero - which would have let a pause mid-series
+    // unhook the button.
+    fun getCurrentStrokeDistance(): Float =
+        if (session.value.isAnchorArmed) anchorHoldDistance + engine.strokeDistance else engine.strokeDistance
 
     // ============================ Brush previews ============================
 
@@ -1226,6 +1247,159 @@ class DrawingViewModel(
 
     fun toggleRecoil() {
         session.update { it.copy(isRecoilActive = !it.isRecoilActive) }
+    }
+
+    // ============================ Anchor ============================
+    //
+    // With Anchor on, holding the button no longer lowers the pen by itself - it arms it. Until
+    // the button is let go, each contact of the drawing finger is one line, and every line
+    // starts from the same point: the anchor, where the first one began. Lifting the drawing
+    // finger ends the line and sends the cursor back there, so the next one starts from it.
+    //
+    // The pen is down only while both are true - button held, drawing finger on the glass -
+    // which is also what makes each line its own stroke. Carried over as one, the jump back to
+    // the anchor would have been drawn as a straight segment across the canvas.
+
+    /** One finger is on the canvas, steering the cursor. */
+    private var drawFingerDown = false
+
+    /** Distance drawn across the whole hold - see getCurrentStrokeDistance. */
+    private var anchorHoldDistance = 0f
+
+    /** How far the drawing finger has moved towards starting a line - see moveCursor. */
+    private var anchorStartTravel = Offset.Zero
+
+    /** The system's touch slop: the travel that separates a finger moving from one resting. */
+    private val anchorStartSlopPx = android.view.ViewConfiguration.get(context).scaledTouchSlop.toFloat()
+
+    fun toggleAnchor() {
+        session.update { it.copy(isAnchorActive = !it.isAnchorActive) }
+    }
+
+    /**
+     * The modes a line from an anchor means something in: freehand and the eraser, and straight
+     * lines, which make the fan the tool is half for. A fill, a selection, a path or a gradient
+     * each does its own thing with a press, and the anchor would only get in its way.
+     */
+    private fun anchorApplies(state: DrawingState): Boolean =
+        state.isAnchorActive && !state.isEyeDropperMode && when (state.drawingMode) {
+            is DrawingMode.Freehand, is DrawingMode.Eraser,
+            is DrawingMode.StraightLine, is DrawingMode.StraightLineEraser -> true
+            else -> false
+        }
+
+    /** The floating button went down. */
+    fun pressPen() {
+        if (anchorApplies(session.value)) {
+            // The anchor exists from the press, where the cursor is, rather than from the first
+            // line: the finger on the button can steer it before anything is drawn, and there
+            // has to be something there for it to steer. The first line starts from it anyway,
+            // since the cursor is sitting on it.
+            session.update {
+                it.copy(isAnchorArmed = true, anchorPoint = CursorAnchor(it.cursorPosition, it.brushPosition))
+            }
+            anchorHoldDistance = 0f
+            anchorStartTravel = Offset.Zero
+            // A pen latched down by a tap on the canvas would be carried into the hold, and read
+            // as a line already under way. The hold takes it over, as a normal press does, but
+            // ends it here rather than at release: the lines of this hold are separate strokes.
+            if (session.value.isPenDown) setPenDown(false)
+            // The engine's own count too. A normal press begins a stroke, which zeroes it; an
+            // armed one begins nothing, so it would still hold the length of the last stroke
+            // drawn - and read as this hold having drawn already, which kept the button from
+            // ever coming loose.
+            engine.resetDistance()
+            // Nothing has been pushed by this press yet. Dragging the button instead of drawing
+            // aborts "the stroke this press made", and without this it would take back whatever
+            // an earlier press had left on the stack.
+            pressPushedEntry = false
+            return
+        }
+        setPenDown(true)
+    }
+
+    /** The floating button came up. */
+    fun releasePen() {
+        if (session.value.isAnchorArmed) {
+            session.update { it.copy(isAnchorArmed = false, anchorPoint = null) }
+            // A line still being drawn ends where it is: the hold is over, so there is no next
+            // line to send the cursor back for.
+            if (session.value.isPenDown) setPenDown(false)
+            return
+        }
+        setPenDown(false)
+    }
+
+    /** A single finger landed on the canvas, or left it - by lifting, or by becoming a pinch. */
+    fun setDrawFinger(down: Boolean) {
+        drawFingerDown = down
+        if (down) anchorStartTravel = Offset.Zero
+        if (!down && session.value.isAnchorArmed && session.value.isPenDown) endAnchorLine()
+    }
+
+    /**
+     * Starts a line once the drawing finger has moved, rather than on its touch. A touch alone
+     * would stamp a dot on the anchor, and a finger that went on to become a pinch would leave
+     * one behind.
+     */
+    private fun startAnchorLine() {
+        session.value.anchorPoint?.let { a ->
+            // The last line's return may still be travelling. This one starts from the anchor,
+            // not from wherever that glide has got to.
+            history.stopCursorGlide()
+            session.update { it.copy(cursorPosition = a.cursor, brushPosition = a.brush) }
+        }
+        setPenDown(true)
+        val first = strokeStartAnchor
+        if (session.value.anchorPoint == null && session.value.isPenDown && first != null) {
+            session.update { it.copy(anchorPoint = first) }
+        }
+    }
+
+    private fun endAnchorLine() {
+        anchorHoldDistance += engine.strokeDistance
+        anchorStartTravel = Offset.Zero
+        setPenDown(false)
+        session.value.anchorPoint?.let {
+            history.glideCursorTo(it, durationMs = RECOIL_MS, yieldsToMovement = false)
+        }
+    }
+
+    /**
+     * The finger on the button moved by [screenDelta], in screen pixels: carry the anchor with it.
+     *
+     * Turned into canvas space the way the drawing finger's movement is - unrotated, unscaled.
+     *
+     * Slowed by Draw Sensitivity only when Fine is on. Moving the anchor is placing, not drawing,
+     * and the app's rule for placing is exactly that: sensitivity bites while the pen paints, and
+     * Fine is the tool that extends it to everything else. Applying it here unasked made Anchor
+     * behave as if it had switched Fine on behind your back.
+     *
+     * While a line is being drawn, only the anchor moves: the line in progress is the drawing
+     * finger's. Between lines the cursor is waiting on the anchor for the next one to start, so
+     * it goes where the anchor goes, and you see exactly where that line will begin.
+     */
+    fun moveAnchor(screenDelta: Offset) {
+        val state = session.value
+        val anchor = state.anchorPoint ?: return
+        if (!state.isAnchorArmed) return
+        val slowdown = if (state.isFineCursor) state.cursorSensitivity else 1f
+        val delta = screenDelta.rotate(-state.canvasRotation) / state.canvasScale * slowdown
+        val w = state.canvasWidth.toFloat()
+        val h = state.canvasHeight.toFloat()
+        fun Offset.inCanvas() = Offset(x.coerceIn(0f, w), y.coerceIn(0f, h))
+        val moved = CursorAnchor((anchor.cursor + delta).inCanvas(), (anchor.brush + delta).inCanvas())
+        val waiting = !state.isPenDown
+        // The return from the last line may still be travelling, and would carry on writing its
+        // own positions over the ones set here.
+        if (waiting) history.stopCursorGlide()
+        session.update {
+            it.copy(
+                anchorPoint = moved,
+                cursorPosition = if (waiting) moved.cursor else it.cursorPosition,
+                brushPosition = if (waiting) moved.brush else it.brushPosition
+            )
+        }
     }
 
     fun toggleLazyMode() {
