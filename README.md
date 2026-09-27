@@ -76,7 +76,6 @@ away from the canvas.
 - Image import, a floating reference image, colour history.
 - Fullscreen, leaving only the floating button, its satellites and the chips.
 - Export as PNG.
-- Timelapse (experimental, turn on Experimental features in Settings): record a drawing as you make it, and export it as an MP4 of 15 s, 30 s or its own pace.
 
 ## Building
 
