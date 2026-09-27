@@ -571,9 +571,13 @@ private fun ToolStateChip(
         return
     }
 
-    val current by remember(viewModel, tool) {
-        viewModel.uiState.map { st -> params.map { it.read(st) } }.distinctUntilChanged()
-    }.collectAsState(params.map { it.read(viewModel.uiState.value) })
+    // The initial value is read once, with the flow, rather than rebuilt from the state on
+    // every recomposition only to be ignored after the first.
+    val (currentFlow, initial) = remember(viewModel, tool) {
+        viewModel.uiState.map { st -> params.map { it.read(st) } }.distinctUntilChanged() to
+            params.map { it.read(viewModel.uiState.value) }
+    }
+    val current by currentFlow.collectAsState(initial)
     // Which value a vertical drag changes. Kept between drags, the way the colour gate keeps its
     // column, so a second adjustment starts on the value the last one left off on.
     var selected by remember(tool) { mutableIntStateOf(0) }

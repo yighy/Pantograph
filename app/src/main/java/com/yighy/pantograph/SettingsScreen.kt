@@ -1,6 +1,5 @@
 package com.yighy.pantograph
 
-import android.os.Build
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -118,14 +117,12 @@ fun SettingsScreen(
                     onCheckedChange = { scope.launch { preferenceManager.setHideStatusBar(it) } }
                 )
 
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    SettingsToggleRow(
-                        label = "Wallpaper Colors",
-                        subtitle = "Match theme to your wallpaper (Material You)",
-                        checked = dynamicColor,
-                        onCheckedChange = { scope.launch { preferenceManager.setDynamicColor(it) } }
-                    )
-                }
+                SettingsToggleRow(
+                    label = "Wallpaper Colors",
+                    subtitle = "Match theme to your wallpaper (Material You)",
+                    checked = dynamicColor,
+                    onCheckedChange = { scope.launch { preferenceManager.setDynamicColor(it) } }
+                )
             }
 
             // Drawing Controls Section

@@ -1,5 +1,10 @@
 <resources>
-    <style name="Theme.MyApplication3" parent="Theme.Material3.DayNight.NoActionBar">
+    <!--
+        The window behind the Compose content: its background is what shows while the app
+        starts. The platform's own Material theme, light here and dark in values-night, so the
+        app no longer needs the Material Components library just to name a parent.
+    -->
+    <style name="Theme.MyApplication3" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>

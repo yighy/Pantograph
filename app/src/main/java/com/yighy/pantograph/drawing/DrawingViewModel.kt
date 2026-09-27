@@ -1,5 +1,6 @@
 package com.yighy.pantograph.drawing
 
+import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -60,6 +61,12 @@ class DrawingViewModel(
     private val projectId: Long,
     private val internalFilesDir: File,
     private val preferenceManager: PreferenceManager,
+    /**
+     * The application's context, never an activity's: this outlives every screen it serves,
+     * and an activity held here would be kept alive with it. MainNavigation passes
+     * applicationContext.
+     */
+    @field:SuppressLint("StaticFieldLeak")
     private val context: android.content.Context
 ) : ViewModel() {
 

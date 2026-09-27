@@ -65,6 +65,7 @@ fun DrawingToolbar(
     // tool that was re-selected without changing state simply never reopened its panel.
     activePanel: ToolbarPanel,
     onActivePanelChange: (ToolbarPanel) -> Unit,
+    modifier: Modifier = Modifier,
     /**
      * Strips this back to the panels an armed tool brings with it. Fullscreen sets it: the
      * buttons belong to the chrome it is there to remove, the three panels behind them are
@@ -72,8 +73,7 @@ fun DrawingToolbar(
      * reaches the path and selection commands, which is how fullscreen came to arm tools it
      * gave you no way to finish using.
      */
-    armedToolsOnly: Boolean = false,
-    modifier: Modifier = Modifier
+    armedToolsOnly: Boolean = false
 ) {
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val canUndo by remember(viewModel) { viewModel.uiState.map { it.canUndo }.distinctUntilChanged() }.collectAsState(false)
