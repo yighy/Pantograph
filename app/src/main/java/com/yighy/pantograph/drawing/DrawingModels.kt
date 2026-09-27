@@ -292,19 +292,13 @@ data class DrawingState(
     
     val cursorPosition: Offset = Offset.Zero,
     /**
-     * Whether the cursor springs back to where a stroke began when the pen comes up.
-     *
-     * A constraint rather than a tool, like lazy mode: it modifies whatever brush is in hand
-     * instead of replacing it, so it is a flag of its own rather than a [DrawingMode].
-     */
-    val isRecoilActive: Boolean = false,
-    /**
      * Holding the button arms the pen instead of lowering it: from then until it is let go, each
      * touch of the drawing finger is one line, and every line starts where the first one of the
      * hold began. See the Anchor section of DrawingViewModel.
      *
-     * Not persisted, like [isRecoilActive]: which of the two a drawing wants changes within a
-     * drawing, not between them.
+     * A constraint rather than a tool, like lazy mode: it modifies whatever brush is in hand
+     * instead of replacing it, so it is a flag of its own rather than a [DrawingMode]. Not
+     * persisted: whether a drawing wants it changes within a drawing, not between them.
      */
     val isAnchorActive: Boolean = false,
     /**
@@ -326,8 +320,8 @@ data class DrawingState(
      * placing the cursor becomes precision work at all, where before you approached a target at
      * full speed and the mapping changed the moment you pressed.
      *
-     * Not persisted, like [isRecoilActive]: which of the two a drawing wants changes within a
-     * drawing, not between them.
+     * Not persisted, like [isAnchorActive]: whether a drawing wants it changes within a drawing,
+     * not between them.
      */
     val isFineCursor: Boolean = false,
     /**

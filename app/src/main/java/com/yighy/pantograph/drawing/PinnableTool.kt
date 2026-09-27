@@ -32,11 +32,9 @@ enum class PinnableTool(
     Fill("Fill", Icons.Rounded.FormatColorFill),
     Gradient("Gradient", Icons.Rounded.Gradient),
     Lazy("Lazy", Icons.Rounded.Cable),
-    Recoil("Recoil", Icons.Rounded.Replay),
     /**
-     * Recoil's two-handed successor, tried beside it before one replaces the other. The return
-     * point is fixed for the whole hold rather than moving with each stroke, and the button never
-     * has to be let go between lines.
+     * Every line of a hold starts from one point, which the finger on the button moves. The
+     * button never has to be let go between lines.
      */
     Anchor("Anchor", Icons.Rounded.Anchor),
     /**
@@ -88,7 +86,6 @@ enum class PinnableTool(
         Fill -> state.drawingMode is DrawingMode.BucketFill
         Gradient -> state.drawingMode is DrawingMode.Gradient
         Lazy -> state.isLazyModeActive
-        Recoil -> state.isRecoilActive
         Anchor -> state.isAnchorActive
         Fine -> state.isFineCursor
         Loupe -> state.isLoupeActive
@@ -113,7 +110,6 @@ enum class PinnableTool(
         when (this) {
             Fill -> viewModel.setBucketFillMode()
             Lazy -> viewModel.toggleLazyMode()
-            Recoil -> viewModel.toggleRecoil()
             Anchor -> viewModel.toggleAnchor()
             Fine -> viewModel.toggleFineCursor()
             Loupe -> viewModel.toggleLoupe()

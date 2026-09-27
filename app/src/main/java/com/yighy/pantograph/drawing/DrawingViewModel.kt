@@ -85,11 +85,12 @@ class DrawingViewModel(
     private var strokeStartAnchor: CursorAnchor? = null
 
     /**
-     * How long the recoil takes. Shorter than undo's, because it runs once per stroke rather
-     * than once in a while - but not instant: seeing the cursor travel is what stops you losing
-     * it, where a teleport between two marks reads as it having jumped somewhere at random.
+     * How long the cursor takes to return to the anchor after each line. Shorter than undo's,
+     * because it runs once per line rather than once in a while - but not instant: seeing the
+     * cursor travel is what stops you losing it, where a teleport between two marks reads as it
+     * having jumped somewhere at random.
      */
-    private val RECOIL_MS = 110L
+    private val ANCHOR_RETURN_MS = 110L
 
     /**
      * Whether the press in progress has put anything on the undo stack yet.
@@ -525,17 +526,6 @@ class DrawingViewModel(
             // Pushed even for an empty stroke: abortCurrentStroke() pops unconditionally.
             history.save(strokeSnapshotSpec(session.value), strokeStartAnchor)
             pressPushedEntry = true
-            // Spent before the anchor is dropped. Sending the cursor back to where the stroke
-            // began leaves the next mark to be measured from somewhere meaningful, instead of
-            // from the far end of the one just made - which is nowhere in particular.
-            if (state.isRecoilActive) {
-                // Does not yield to cursor movement: the hand that was steering is still on
-                // the screen at pen-up, and its next move used to cancel this before it had
-                // travelled anywhere.
-                strokeStartAnchor?.let {
-                    history.glideCursorTo(it, durationMs = RECOIL_MS, yieldsToMovement = false)
-                }
-            }
             strokeStartAnchor = null
             commitStrokeToLayer()
             // After the composite, not before: that is where the texture mask and the selection
@@ -1278,10 +1268,6 @@ class DrawingViewModel(
         session.update { it.copy(isFineCursor = !it.isFineCursor) }
     }
 
-    fun toggleRecoil() {
-        session.update { it.copy(isRecoilActive = !it.isRecoilActive) }
-    }
-
     // ============================ Anchor ============================
     //
     // With Anchor on, holding the button no longer lowers the pen by itself - it arms it. Until
@@ -1394,7 +1380,10 @@ class DrawingViewModel(
         anchorStartTravel = Offset.Zero
         setPenDown(false)
         session.value.anchorPoint?.let {
-            history.glideCursorTo(it, durationMs = RECOIL_MS, yieldsToMovement = false)
+            // Does not yield to cursor movement: the drawing finger is usually still on the
+            // glass as the line ends, and its next move would cancel this before it had
+            // travelled anywhere.
+            history.glideCursorTo(it, durationMs = ANCHOR_RETURN_MS, yieldsToMovement = false)
         }
     }
 

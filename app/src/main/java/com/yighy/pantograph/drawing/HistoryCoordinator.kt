@@ -42,9 +42,9 @@ class HistoryCoordinator(
      * Whether the glide in flight gives way to the user driving the cursor.
      *
      * Undo's does: it runs while nothing else is happening, so a finger arriving means the user
-     * wants control back. Recoil's must not. The finger steering the cursor is usually still
-     * down when the pen comes up - not having to lift it is the whole gesture - so its next
-     * move is not somebody taking over, it is the same movement that was already under way.
+     * wants control back. Anchor's must not. The finger steering the cursor is usually still
+     * down when a line ends - not having to lift it is the whole gesture - so its next move is
+     * not somebody taking over, it is the same movement that was already under way.
      */
     private var glideYieldsToMovement = true
 
@@ -144,7 +144,7 @@ class HistoryCoordinator(
      * off the line they are drawing.
      */
     fun cancelCursorGlide() {
-        // A recoil glide holds its ground; see glideYieldsToMovement. Without this it was
+        // An anchor's glide holds its ground; see glideYieldsToMovement. Without this it was
         // cancelled by the very finger it was meant to run alongside - which is why the cursor
         // came back when the hand had stopped, and stayed put when it had not.
         if (!glideYieldsToMovement && cursorJob?.isActive == true) return
@@ -164,14 +164,13 @@ class HistoryCoordinator(
     /**
      * Walks the cursor to [anchor] over [durationMs].
      *
-     * Public because undo is no longer the only caller: the recoil setting sends the cursor
-     * back to where a stroke began every time the pen comes up, which is the same motion for a
-     * different reason. It takes its own duration because it happens far more often - once per
-     * stroke rather than once in a while, and its own [yieldsToMovement] because the hand it
-     * runs under is a moving one.
+     * Public because undo is not the only caller: Anchor sends the cursor back to the anchor
+     * after every line, which is the same motion for a different reason. It takes its own
+     * duration because it happens far more often - once per line rather than once in a while,
+     * and its own [yieldsToMovement] because the hand it runs under is a moving one.
      *
-     * A later call replaces an earlier glide whatever either asked for: undo pressed during a
-     * recoil is a new instruction, not a finger carrying on.
+     * A later call replaces an earlier glide whatever either asked for: undo pressed during an
+     * anchor's return is a new instruction, not a finger carrying on.
      */
     fun glideCursorTo(anchor: CursorAnchor, durationMs: Long = 150L, yieldsToMovement: Boolean = true) {
         cursorJob?.cancel()

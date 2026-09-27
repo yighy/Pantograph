@@ -838,7 +838,6 @@ fun LayersAndActionsSection(
     val renderVersion by remember(viewModel) { viewModel.uiState.map { it.renderVersion }.distinctUntilChanged() }.collectAsState(0)
     val drawingMode by remember(viewModel) { viewModel.uiState.map { it.drawingMode }.distinctUntilChanged() }.collectAsState(DrawingMode.Freehand)
     val isLazyModeActive by remember(viewModel) { viewModel.uiState.map { it.isLazyModeActive }.distinctUntilChanged() }.collectAsState(false)
-    val isRecoilActive by remember(viewModel) { viewModel.uiState.map { it.isRecoilActive }.distinctUntilChanged() }.collectAsState(false)
     // Derived in the flow rather than rebuilt from the fields above, so the row cannot drift
     // from what PinnableTool.isActive considers on. Only ever one or two entries: drawingMode
     // holds a single value, so every tool but Lazy excludes all the others.
@@ -871,7 +870,6 @@ fun LayersAndActionsSection(
                 viewModel = viewModel,
                 drawingMode = drawingMode,
                 isLazyModeActive = isLazyModeActive,
-                isRecoilActive = isRecoilActive,
                 isFullscreen = isFullscreen
             )
 
@@ -1080,7 +1078,6 @@ private fun ToolsMenuButton(
     viewModel: DrawingViewModel,
     drawingMode: DrawingMode,
     isLazyModeActive: Boolean,
-    isRecoilActive: Boolean,
     isFullscreen: Boolean
 ) {
     var showTools by remember { mutableStateOf(false) }
@@ -1092,7 +1089,7 @@ private fun ToolsMenuButton(
     val isLoupeActive by remember(viewModel) { viewModel.uiState.map { it.isLoupeActive }.distinctUntilChanged() }.collectAsState(false)
     val isBucketFill = drawingMode is DrawingMode.BucketFill
     val isSelectionMode = drawingMode.isSelectionTool()
-    val isActive = showTools || isBucketFill || isLazyModeActive || isRecoilActive || isAnchorActive || isFineCursor || isLoupeActive || isSelectionMode || drawingMode is DrawingMode.Gradient
+    val isActive = showTools || isBucketFill || isLazyModeActive || isAnchorActive || isFineCursor || isLoupeActive || isSelectionMode || drawingMode is DrawingMode.Gradient
 
     Box {
         GroupedButton(GroupPosition.First, onClick = { showTools = true }, pressed = isActive) {
@@ -1175,14 +1172,6 @@ private fun ToolsMenuButton(
                     }
                     // Beside Lazy rather than among the paint tools: neither of these paints,
                     // both steady the hand that does.
-                    ExtraToolItem(
-                        "Recoil", isRecoilActive, Icons.Rounded.Replay,
-                        isPinned = pinnedTools.contains(PinnableTool.Recoil),
-                        onTogglePin = { viewModel.togglePinnedTool(PinnableTool.Recoil) }
-                    ) {
-                        viewModel.toggleRecoil()
-                        showTools = false
-                    }
                     ExtraToolItem(
                         "Anchor", isAnchorActive, Icons.Rounded.Anchor,
                         isPinned = pinnedTools.contains(PinnableTool.Anchor),
