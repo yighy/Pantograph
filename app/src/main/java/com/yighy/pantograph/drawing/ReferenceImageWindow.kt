@@ -42,7 +42,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
 import com.yighy.pantograph.data.LayerEntity
 import com.yighy.pantograph.data.PreferenceManager
 import kotlinx.coroutines.flow.distinctUntilChanged

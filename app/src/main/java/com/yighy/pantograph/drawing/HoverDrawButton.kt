@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.yighy.pantograph.ui.theme.MotionTokens
-import coil.compose.AsyncImage
 import com.yighy.pantograph.data.LayerEntity
 import com.yighy.pantograph.data.PreferenceManager
 import kotlinx.coroutines.delay

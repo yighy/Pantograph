@@ -70,7 +70,6 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import coil.compose.AsyncImage
 import com.yighy.pantograph.ui.theme.MotionTokens
 import com.yighy.pantograph.R
 import com.yighy.pantograph.data.LayerEntity

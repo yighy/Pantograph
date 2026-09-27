@@ -33,7 +33,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalUriHandler
-import coil.compose.AsyncImage
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.request.addLastModifiedToFileCacheKey
 import com.yighy.pantograph.data.PreferenceManager
 import com.yighy.pantograph.data.ProjectEntity
 import com.yighy.pantograph.data.ReleaseVersion
@@ -318,8 +320,22 @@ fun ProjectCard(
                     .aspectRatio(ProjectPreviewRatio.forCanvas(project.width, project.height))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
+                // The thumbnail is rewritten in place, under the same name, each time the
+                // project is saved. Coil 3 no longer puts a file's modification time in its
+                // cache key by default, so the grid kept showing the first picture it had
+                // loaded until the app restarted. With the time in the key a rewritten file is
+                // a new image; the project's own timestamp makes it ask again when the save
+                // lands while the grid is already on screen.
+                val context = LocalContext.current
+                val thumbnail = remember(project.thumbnailPath, project.updatedAt) {
+                    ImageRequest.Builder(context)
+                        .data(project.thumbnailPath)
+                        .addLastModifiedToFileCacheKey(true)
+                        .memoryCacheKeyExtra("updatedAt", project.updatedAt.toString())
+                        .build()
+                }
                 AsyncImage(
-                    model = project.thumbnailPath,
+                    model = thumbnail,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Fit
