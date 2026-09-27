@@ -44,8 +44,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.yighy.pantograph.ui.theme.MotionTokens
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** Which expandable panel is currently open under the toolbar. Panels are mutually exclusive. */
 enum class ToolbarPanel { None, Brush, Color, Settings }
@@ -946,6 +949,12 @@ fun SettingRow(label: String, valueLabel: String, value: Float, onValueChange: (
  * once something is selected - a long-press menu here meant the two most useful actions on a
  * preset were invisible until you happened to try holding one.
  */
+/** Long enough for the card to have finished opening before the first thumbnail is drawn. */
+private const val PREVIEW_AFTER_OPEN_MS = 300L
+
+/** Thumbnails queue on this to be drawn one a frame, rather than all within the same one. */
+private val presetPreviewTurn = Mutex()
+
 @Composable
 private fun PresetRow(
     viewModel: DrawingViewModel,
@@ -978,17 +987,40 @@ private fun PresetRow(
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val widthPx = constraints.maxWidth
             val heightPx = with(density) { strokeHeight.roundToPx() }
-            val thumbnail = remember(brush, strokeColor, assetsVersion, widthPx) {
-                viewModel.renderPresetPreview(brush, strokeColor, widthPx, heightPx)
+            // Drawn by an effect rather than inside remember, which put it in the composition:
+            // each one walks the real stamp engine, and a list of them all had to finish before
+            // the card holding them could show its first frame. One already drawn is shown at
+            // once; the others wait for the card to have opened and then come in one a frame,
+            // so neither the opening nor a scroll stalls on them.
+            val thumbnail by produceState(
+                viewModel.cachedPresetPreview(brush, strokeColor, widthPx, heightPx),
+                brush, strokeColor, assetsVersion, widthPx
+            ) {
+                viewModel.cachedPresetPreview(brush, strokeColor, widthPx, heightPx)?.let {
+                    value = it
+                    return@produceState
+                }
+                delay(PREVIEW_AFTER_OPEN_MS)
+                presetPreviewTurn.withLock {
+                    withFrameNanos { }
+                    value = viewModel.renderPresetPreview(brush, strokeColor, widthPx, heightPx)
+                }
             }
-            Image(
-                bitmap = thumbnail.asImageBitmap(),
-                contentDescription = null,
+            // The strip keeps its height while it waits, so the card opens at its final size.
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(strokeHeight)
                     .clip(MaterialTheme.shapes.extraSmall)
-            )
+            ) {
+                thumbnail?.let {
+                    Image(
+                        bitmap = it.asImageBitmap(),
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
         }
         Text(
             brush.name,

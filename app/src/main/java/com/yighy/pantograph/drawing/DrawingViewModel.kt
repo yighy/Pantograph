@@ -672,6 +672,32 @@ class DrawingViewModel(
      * [DrawingState.brushAssetsVersion].
      */
     fun renderPresetPreview(config: BrushConfig, color: Color, widthPx: Int, heightPx: Int): Bitmap {
+        val key = presetPreviewKey(config, color, widthPx, heightPx)
+        presetPreviews.get(key)?.let { return it }
+        return drawPresetPreview(config, color, widthPx, heightPx).also { presetPreviews.put(key, it) }
+    }
+
+    /** A preset's thumbnail if one is already drawn for exactly this, without drawing one. */
+    fun cachedPresetPreview(config: BrushConfig, color: Color, widthPx: Int, heightPx: Int): Bitmap? =
+        presetPreviews.get(presetPreviewKey(config, color, widthPx, heightPx))
+
+    // The asset version is part of the key: a thumbnail drawn before a preset's tip had been
+    // decoded shows a plain round stamp, and must not outlive the decode.
+    private fun presetPreviewKey(config: BrushConfig, color: Color, widthPx: Int, heightPx: Int) =
+        listOf(config, color, widthPx, heightPx, session.value.brushAssetsVersion)
+
+    /**
+     * Thumbnails kept between openings of the preset list. Its card leaves the composition
+     * whenever another panel takes its place, and without this every opening drew the whole
+     * list again - one demo stroke per preset, on the main thread, all before the card's first
+     * frame, which is what swallowed its opening animation. Bounded by bytes, since a
+     * thumbnail is as wide as the screen.
+     */
+    private val presetPreviews = object : android.util.LruCache<List<Any>, Bitmap>(16 * 1024 * 1024) {
+        override fun sizeOf(key: List<Any>, value: Bitmap) = value.byteCount
+    }
+
+    private fun drawPresetPreview(config: BrushConfig, color: Color, widthPx: Int, heightPx: Int): Bitmap {
         val current = session.value
         // Fitted to the strip rather than drawn true to size - see BrushPreviewScale. The
         // preset's multiplier is folded in here, so the state below carries 1x: applying it
