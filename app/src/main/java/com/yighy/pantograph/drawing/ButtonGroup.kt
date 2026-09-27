@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 /** Where a button sits in its group, which decides which of its corners are the group's. */
 enum class GroupPosition { Only, First, Middle, Last }
 
-private val ButtonSize = 48.dp
+private val ButtonSize = 56.dp
 private val FullCorner = ButtonSize / 2
 /** Between two buttons of a group: none, so the group reads as one pill. */
 private val InnerCorner = 0.dp
