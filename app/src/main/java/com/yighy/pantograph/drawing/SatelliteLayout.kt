@@ -18,34 +18,23 @@ object SatelliteLayout {
     enum class Side(val axisDeg: Float) { Right(0f), Bottom(90f), Left(180f), Top(270f) }
 
     /**
-     * Where a satellite sits as the arcs see it: a side of the button, and how many rings out.
-     * Ring 0 is against the button; a satellite queued behind another on the same side is on
-     * the ring beyond it - the arcs' form of the column slots below.
+     * Where a satellite sits: a side of the button, and how many rings out. Ring 0 is against
+     * the button; a satellite queued behind another on the same side is on the ring beyond it.
      */
     data class Slot(val side: Side, val ring: Int)
 
-    /**
-     * @param toolStacked false in the normal case, where the tool satellite sits on a flank
-     * beside the button and is turned on its side. True only when neither flank was available
-     * and it had to fall back into the vertical column below the mode one, where it lies flat
-     * - so its width and height swap with this flag.
-     */
     data class Placement(
-        val levelsX: Float,
-        val levelsY: Float,
-        val modeX: Float,
-        val modeY: Float,
-        val colourX: Float,
-        val colourY: Float,
-        val toolX: Float,
-        val toolY: Float,
-        val toolStacked: Boolean,
         val levelsSlot: Slot,
         val modeSlot: Slot,
         val colourSlot: Slot,
         val toolSlot: Slot
     )
 
+    /**
+     * Each satellite's slot around a button of [fabSizePx] at ([fabX], [fabY]), with arcs
+     * [miniPx] deep and [gapPx] apart. A satellite takes its own side unless the screen edge
+     * leaves no room for it there, and then queues behind another.
+     */
     fun place(
         fabX: Float,
         fabY: Float,
@@ -55,67 +44,33 @@ object SatelliteLayout {
         screenWidth: Float,
         screenHeight: Float
     ): Placement {
-        // Levels satellite: to the right unless that runs off the edge.
+        // Levels: to the right unless that runs off the edge.
         val levelsFitsRight = fabX + fabSizePx + gapPx + miniPx <= screenWidth
-        val levelsX = if (levelsFitsRight) fabX + fabSizePx + gapPx else fabX - gapPx - miniPx
 
-        // The column above and below the button is shared by the mode, colour and (when it
-        // has nowhere else to go) tool pills, so they are placed by slot rather than each
-        // working out its own offset. Slot 0 is the one nearest the button on that side.
-        fun downSlot(i: Int) = fabY + fabSizePx + gapPx + i * (miniPx + gapPx)
-        fun upSlot(i: Int) = fabY - gapPx - miniPx - i * (miniPx + gapPx)
-
-        // Mode satellite: below unless that runs off the bottom.
+        // Mode: below unless that runs off the bottom.
         val columnGoesDown = fabY + fabSizePx + gapPx + miniPx <= screenHeight
-        val modeY = if (columnGoesDown) downSlot(0) else upSlot(0)
 
-        // Colour satellite: above, mirroring the mode one below.
+        // Colour: above, mirroring mode below.
         //
         // The two want opposite ends of the same column, so whichever is displaced by an edge
         // lands on the other's side and has to queue behind it. At the bottom of the screen
-        // the mode pill has already flipped up into slot 0, which puts colour in slot 1; at
-        // the top, colour is the one that flips and follows the mode pill down.
+        // mode has already flipped up into ring 0, which puts colour in ring 1; at the top,
+        // colour is the one that flips and follows mode down.
         val colourFitsAbove = fabY - gapPx - miniPx >= 0f
-        val colourY = when {
-            !columnGoesDown -> upSlot(1)
-            colourFitsAbove -> upSlot(0)
-            else -> downSlot(1)
-        }
 
-        // Tool satellite: the left flank, mirroring the levels one on the right.
+        // Tool: the left flank, mirroring levels on the right.
         //
-        // Note it has no opposite flank to flip to. The right flank is either wide enough, in
-        // which case the levels pill is sitting in it, or too narrow, in which case nothing
-        // fits there - those two conditions are exact negations of each other, so a right
-        // flank is never both free and usable. When the left runs out of room the tool drops
-        // into the vertical column, behind whatever is already queued there.
-        val leftFlankX = fabX - gapPx - miniPx
-        val leftFlankFree = levelsFitsRight && leftFlankX >= 0f
-
-        val toolStacked = !leftFlankFree
-
-        val toolX = if (leftFlankFree) leftFlankX else fabX
-        val toolY = when {
-            leftFlankFree -> fabY
-            // Up: mode took slot 0 and colour slot 1.
-            !columnGoesDown -> upSlot(2)
-            // Down: mode has slot 0, and colour is only down here if it could not fit above.
-            colourFitsAbove -> downSlot(1)
-            else -> downSlot(2)
-        }
+        // It has no opposite flank to flip to. The right flank is either wide enough, in which
+        // case levels is sitting in it, or too narrow, in which case nothing fits there - those
+        // two conditions are exact negations of each other, so a right flank is never both free
+        // and usable. When the left runs out of room the tool drops into the column, behind
+        // whatever is already queued there.
+        val leftFlankFree = levelsFitsRight && fabX - gapPx - miniPx >= 0f
+        // Whether a second ring still fits below: mode fitting there says nothing about the
+        // ring beyond it, and near the bottom that one would hang off the screen.
+        val secondRingFitsBelow = fabY + fabSizePx + 2 * (gapPx + miniPx) <= screenHeight
 
         return Placement(
-            levelsX = levelsX,
-            levelsY = fabY,
-            modeX = fabX,
-            modeY = modeY,
-            colourX = fabX,
-            colourY = colourY,
-            toolX = toolX,
-            toolY = toolY,
-            toolStacked = toolStacked,
-            // The same decisions as the positions above, stated as sides and rings. Column slot
-            // i is ring i on that side; a flank is always ring 0.
             levelsSlot = Slot(if (levelsFitsRight) Side.Right else Side.Left, 0),
             modeSlot = Slot(if (columnGoesDown) Side.Bottom else Side.Top, 0),
             colourSlot = when {
@@ -125,8 +80,11 @@ object SatelliteLayout {
             },
             toolSlot = when {
                 leftFlankFree -> Slot(Side.Left, 0)
+                // Up: mode took ring 0 and colour ring 1.
                 !columnGoesDown -> Slot(Side.Top, 2)
-                colourFitsAbove -> Slot(Side.Bottom, 1)
+                // Down: mode has ring 0, and colour is only down here if it could not fit above.
+                // Short of room below, up instead, behind colour.
+                colourFitsAbove -> if (secondRingFitsBelow) Slot(Side.Bottom, 1) else Slot(Side.Top, 1)
                 else -> Slot(Side.Bottom, 2)
             }
         )

@@ -1,14 +1,14 @@
 package com.yighy.pantograph.drawing
 
+import com.yighy.pantograph.drawing.SatelliteLayout.Side
+import com.yighy.pantograph.drawing.SatelliteLayout.Slot
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Three pills orbiting a button the user can drag into any corner. The failure mode is two of
- * them landing on top of each other, which is invisible in a happy-path screenshot and obvious
- * the moment someone parks the button at the bottom of a landscape screen.
+ * Four satellites around a button the user can drag into any corner. Which side each one takes
+ * is decided here; that the arcs in those slots never share a touch area is SatelliteArcsTest's.
  */
 class SatelliteLayoutTest {
 
@@ -22,153 +22,104 @@ class SatelliteLayoutTest {
     private fun place(fabX: Float, fabY: Float, sw: Float = w, sh: Float = h) =
         SatelliteLayout.place(fabX, fabY, fab, mini, gap, sw, sh)
 
-    /** Every satellite's box, plus the button's, for overlap checks. */
-    private fun boxes(p: SatelliteLayout.Placement, fabX: Float, fabY: Float): List<FloatArray> {
-        val toolW = if (p.toolStacked) fab else mini
-        val toolH = if (p.toolStacked) mini else fab
-        return listOf(
-            floatArrayOf(fabX, fabY, fab, fab),
-            floatArrayOf(p.levelsX, p.levelsY, mini, fab),
-            floatArrayOf(p.modeX, p.modeY, fab, mini),
-            floatArrayOf(p.colourX, p.colourY, fab, mini),
-            floatArrayOf(p.toolX, p.toolY, toolW, toolH)
-        )
+    @Test
+    fun `with room everywhere each satellite is on its own side against the button`() {
+        val p = place(150f, 400f)
+        assertEquals(Slot(Side.Right, 0), p.levelsSlot)
+        assertEquals(Slot(Side.Bottom, 0), p.modeSlot)
+        assertEquals(Slot(Side.Top, 0), p.colourSlot)
+        assertEquals(Slot(Side.Left, 0), p.toolSlot)
     }
 
-    private fun overlaps(a: FloatArray, b: FloatArray): Boolean =
-        a[0] < b[0] + b[2] && a[0] + a[2] > b[0] && a[1] < b[1] + b[3] && a[1] + a[3] > b[1]
+    @Test
+    fun `against the right edge levels flips left and the tool yields its flank`() {
+        // Levels has nowhere to go but left, which is the tool's home. The tool must give way
+        // rather than overlap, and drops into the column behind mode.
+        val p = place(w - fab, 400f)
+        assertEquals(Slot(Side.Left, 0), p.levelsSlot)
+        assertEquals(Slot(Side.Bottom, 1), p.toolSlot)
+    }
 
-    private fun assertNothingOverlaps(fabX: Float, fabY: Float, sw: Float = w, sh: Float = h) {
+    @Test
+    fun `against the left edge the tool drops into the column`() {
+        val p = place(0f, 400f)
+        assertEquals(Slot(Side.Right, 0), p.levelsSlot)
+        assertEquals(Slot(Side.Bottom, 1), p.toolSlot)
+    }
+
+    @Test
+    fun `against the bottom edge mode and colour stack above the button`() {
+        val p = place(150f, h - fab)
+        assertEquals(Slot(Side.Top, 0), p.modeSlot)
+        assertEquals(Slot(Side.Top, 1), p.colourSlot)
+    }
+
+    @Test
+    fun `against the top edge colour follows mode down`() {
+        val p = place(150f, 0f)
+        assertEquals(Slot(Side.Bottom, 0), p.modeSlot)
+        assertEquals(Slot(Side.Bottom, 1), p.colourSlot)
+    }
+
+    @Test
+    fun `against the left edge and low down the tool queues above instead`() {
+        // Mode still fits below, but a second ring would hang off the bottom.
+        val p = place(0f, h - fab - gap - mini - 1f)
+        assertEquals(Slot(Side.Bottom, 0), p.modeSlot)
+        assertEquals(Slot(Side.Top, 1), p.toolSlot)
+    }
+
+    @Test
+    fun `in a bottom corner the tool queues behind both`() {
+        val p = place(0f, h - fab)
+        assertEquals(Slot(Side.Top, 2), p.toolSlot)
+    }
+
+    @Test
+    fun `in a top corner the tool queues behind colour, below`() {
+        val p = place(0f, 0f)
+        assertEquals(Slot(Side.Bottom, 2), p.toolSlot)
+    }
+
+    /**
+     * Along its own axis every satellite stays on screen: that is what each decision checks
+     * before taking a side. Across, an arc is a few pixels wider than the button, and may
+     * overhang by that much when the button is hard against an edge.
+     */
+    private fun assertReachStaysOnScreen(fabX: Float, fabY: Float, sw: Float, sh: Float) {
         val p = place(fabX, fabY, sw, sh)
-        val all = boxes(p, fabX, fabY)
-        val names = listOf("fab", "levels", "mode", "colour", "tool")
-        for (i in all.indices) {
-            for (j in i + 1 until all.size) {
-                assertFalse(
-                    "${names[i]} overlaps ${names[j]} at fab=($fabX,$fabY) screen=${sw}x$sh",
-                    overlaps(all[i], all[j])
-                )
+        listOf(p.levelsSlot, p.modeSlot, p.colourSlot, p.toolSlot).forEach { slot ->
+            val a = SatelliteArcs.arc(slot, fabX + fab / 2f, fabY + fab / 2f, fab / 2f, gap, mini)
+            val at = "$slot at ($fabX,$fabY) on ${sw}x$sh"
+            when (slot.side) {
+                Side.Top -> assertTrue("off the top: $at", a.y >= -0.01f)
+                Side.Bottom -> assertTrue("off the bottom: $at", a.y + a.height <= sh + 0.01f)
+                Side.Left -> assertTrue("off the left: $at", a.x >= -0.01f)
+                Side.Right -> assertTrue("off the right: $at", a.x + a.width <= sw + 0.01f)
             }
         }
     }
 
-    // ---- normal placement ----
-
     @Test
-    fun `with room everywhere the three pills ring the button`() {
-        val p = place(100f, 300f)
-        assertEquals("levels to the right", 100f + fab + gap, p.levelsX, 0.01f)
-        assertEquals(300f, p.levelsY, 0.01f)
-        assertEquals("mode below", 300f + fab + gap, p.modeY, 0.01f)
-        assertEquals("tool to the left", 100f - gap - mini, p.toolX, 0.01f)
-        assertEquals(300f, p.toolY, 0.01f)
-        assertFalse("no need for the column fallback", p.toolStacked)
-    }
-
-    // ---- edge flips ----
-
-    @Test
-    fun `levels satellite flips left against the right edge`() {
-        val fabX = w - fab
-        val p = place(fabX, 300f)
-        assertEquals(fabX - gap - mini, p.levelsX, 0.01f)
-    }
-
-    @Test
-    fun `the mode pill flips above the button against the bottom edge`() {
-        val fabY = h - fab
-        val p = place(100f, fabY)
-        assertTrue("mode should sit above the button", p.modeY < fabY)
-    }
-
-    // ---- the colour pill, which shares the column with the mode one ----
-
-    @Test
-    fun `the colour pill sits above the button by default`() {
-        val p = place(100f, 300f)
-        assertEquals(100f, p.colourX, 0.01f)
-        assertEquals(300f - gap - mini, p.colourY, 0.01f)
-    }
-
-    @Test
-    fun `against the bottom edge the colour pill queues above the displaced mode pill`() {
-        // Mode has flipped up into the slot colour wanted, so colour takes the next one out.
-        val fabY = h - fab
-        val p = place(100f, fabY)
-        assertTrue("colour above mode", p.colourY < p.modeY)
-        assertEquals(p.modeY - gap - mini, p.colourY, 0.01f)
-    }
-
-    @Test
-    fun `against the top edge the colour pill follows the mode pill down`() {
-        val p = place(100f, 0f)
-        assertTrue("colour below the button", p.colourY > 0f)
-        assertEquals(p.modeY + mini + gap, p.colourY, 0.01f)
-    }
-
-    @Test
-    fun `a corner leaves the colour pill on screen`() {
-        for (corner in listOf(0f to 0f, w - fab to 0f, 0f to h - fab, w - fab to h - fab)) {
-            val p = place(corner.first, corner.second)
-            assertTrue("colour off the top at $corner", p.colourY >= 0f)
-            assertTrue("colour off the bottom at $corner", p.colourY + mini <= h)
-        }
-    }
-
-    @Test
-    fun `the tool pill yields its flank rather than sit on top of the levels one`() {
-        // Hard against the right edge the levels pill has nowhere to go but left, which is
-        // the tool pill's home. It must give way instead of overlapping.
-        val fabX = w - fab
-        val p = place(fabX, 300f)
-        assertEquals("levels took the left flank", fabX - gap - mini, p.levelsX, 0.01f)
-        assertTrue("so the tool fell back into the column", p.toolStacked)
-        assertEquals(fabX, p.toolX, 0.01f)
-    }
-
-    @Test
-    fun `against the left edge the tool pill drops into the column`() {
-        // There is no opposite flank to cross to: the right one is taken by the levels pill,
-        // which only vacates it when it is too narrow for anything anyway.
-        val p = place(0f, 300f)
-        assertTrue(p.toolStacked)
-        assertEquals(0f, p.toolX, 0.01f)
-        assertTrue("below the mode pill", p.toolY > p.modeY)
-    }
-
-    @Test
-    fun `nothing is placed off the top or left of the screen`() {
-        for (x in listOf(0f, 4f, 100f)) {
-            for (y in listOf(0f, 4f, 100f)) {
-                val p = place(x, y)
-                assertTrue("levels off-screen at ($x,$y)", p.levelsX >= 0f && p.levelsY >= 0f)
-                assertTrue("mode off-screen at ($x,$y)", p.modeX >= 0f && p.modeY >= 0f)
-                assertTrue("tool off-screen at ($x,$y)", p.toolX >= 0f && p.toolY >= 0f)
-            }
-        }
-    }
-
-    // ---- the property that actually matters ----
-
-    @Test
-    fun `no two satellites ever overlap, wherever the button is parked`() {
+    fun `no satellite reaches off screen, wherever the button is parked`() {
         for (x in 0..360 step 20) {
             for (y in 0..800 step 40) {
-                assertNothingOverlaps(
+                assertReachStaysOnScreen(
                     x.coerceAtMost((w - fab).toInt()).toFloat(),
-                    y.coerceAtMost((h - fab).toInt()).toFloat()
+                    y.coerceAtMost((h - fab).toInt()).toFloat(),
+                    w, h
                 )
             }
         }
     }
 
     @Test
-    fun `no two satellites overlap on a short landscape screen either`() {
+    fun `nor on a short landscape screen`() {
         val sw = 800f
         val sh = 360f
         for (x in 0..800 step 40) {
             for (y in 0..360 step 20) {
-                assertNothingOverlaps(
+                assertReachStaysOnScreen(
                     x.coerceAtMost((sw - fab).toInt()).toFloat(),
                     y.coerceAtMost((sh - fab).toInt()).toFloat(),
                     sw, sh

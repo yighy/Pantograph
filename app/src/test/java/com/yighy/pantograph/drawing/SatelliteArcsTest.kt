@@ -179,20 +179,4 @@ class SatelliteArcsTest {
             x += 19f
         }
     }
-
-    @Test
-    fun `mid-screen each satellite is on its own side against the button`() {
-        val p = SatelliteLayout.place(150f, 400f, 56f, 26f, 10f, 360f, 800f)
-        assertEquals(Slot(Side.Right, 0), p.levelsSlot)
-        assertEquals(Slot(Side.Bottom, 0), p.modeSlot)
-        assertEquals(Slot(Side.Top, 0), p.colourSlot)
-        assertEquals(Slot(Side.Left, 0), p.toolSlot)
-    }
-
-    @Test
-    fun `against the bottom edge mode and colour stack above the button`() {
-        val p = SatelliteLayout.place(150f, 800f - 56f, 56f, 26f, 10f, 360f, 800f)
-        assertEquals(Slot(Side.Top, 0), p.modeSlot)
-        assertEquals(Slot(Side.Top, 1), p.colourSlot)
-    }
 }
