@@ -23,31 +23,21 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.io.File
-
-/**
- * How long a brush setting has to hold still before it is written to the preference store.
- *
- * Long enough that a slider drag costs one write instead of one per frame, short enough that
- * nothing is at risk in the gap: a setting is already live in [DrawingSession] the moment it
- * changes, and the wait only governs when it reaches disk.
- */
-private const val PREFERENCE_SETTLE_MS = 250L
 
 /**
  * Coordinates one open project.
  *
  * The work itself lives in collaborators, each owning one slice: [StrokeEngine] paints,
- * [SelectionController] handles the selection tools, [LayerController] the layer stack,
+ * [SelectionController] handles the selection tools, [PathController] the path tool,
+ * [LayerController] the layer stack,
  * [HistoryCoordinator] undo/redo, [ProjectPersistence] the write-behind saving,
  * [CanvasTransformController] the viewport, [BrushAssetLoader] and [CustomBrushManager] the
  * brushes. They share the state through [DrawingSession].
@@ -76,6 +66,9 @@ class DrawingViewModel(
     // Survives onCleared() (viewModelScope is already cancelled there), so the final flush of
     // pending layer saves and the history cache cleanup actually run when leaving the screen.
     private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // On persistScope for the same reason: see onCleared.
+    private val preferenceWrites = PreferenceWriteBuffer(persistScope)
 
     /**
      * Where the pointer stood when the current stroke began. History is pushed at pen-up, by
@@ -113,6 +106,11 @@ class DrawingViewModel(
     )
     private val layers = LayerController(session, repository, projectId, history, persistence, viewModelScope)
     private val selection = SelectionController(session, engine, history, persistence, repository, projectId, viewModelScope)
+    private val path = PathController(session, engine, persistence) { state ->
+        history.save(strokeSnapshotSpec(session.value))
+        commitStrokeToLayer()
+        if (state.keepUndoneStrokes) captureStrokeTrace(state)?.let { history.attachStrokeTrace(it) }
+    }
     private val viewport = CanvasTransformController(session, viewModelScope)
     private val brushAssets = BrushAssetLoader(session, viewModelScope)
     private val referenceImage = ReferenceImageController(session, persistence, viewModelScope)
@@ -358,17 +356,7 @@ class DrawingViewModel(
 
         // The path tool drags a point rather than painting, and does it with the pen up - so
         // this cannot live in the isPenDown block below.
-        if (state.drawingMode is DrawingMode.Path && state.grabbedPathPoint in state.pathPoints.indices) {
-            val moved = state.pathPoints.toMutableList()
-            moved[state.grabbedPathPoint] = moved[state.grabbedPathPoint].copy(position = newBrushPosition)
-            session.update { it.copy(
-                cursorPosition = newPosition,
-                brushPosition = newBrushPosition,
-                pathPoints = moved
-            ) }
-            repaintPathPreview()
-            return
-        }
+        if (path.dragGrabbedPoint(state, newPosition, newBrushPosition)) return
 
         if (state.isPenDown) {
             val mode = state.drawingMode
@@ -430,7 +418,7 @@ class DrawingViewModel(
         // hold the button for a placement you can adjust, tap the canvas for a quick one.
         val state = session.value
         if (state.drawingMode is DrawingMode.Path) {
-            if (state.grabbedPathPoint >= 0) dropPathPoint() else pressPathPoint(state)
+            if (state.grabbedPathPoint >= 0) path.dropPoint() else path.pressPoint(state)
             return
         }
         setPenDown(!state.isPenDown)
@@ -457,7 +445,7 @@ class DrawingViewModel(
         // down: isPenDown stays false, which keeps the satellites live and the canvas pannable
         // while a path is open - all of which you want, since building one takes a while.
         if (state.drawingMode is DrawingMode.Path) {
-            if (down) pressPathPoint(state) else dropPathPoint()
+            if (down) path.pressPoint(state) else path.dropPoint()
             return
         }
 
@@ -771,168 +759,17 @@ class DrawingViewModel(
     }
 
     // ============================ Path tool ============================
+    // The tool itself is PathController; these are what its panel and the button call.
 
-    /**
-     * Pressing the pen picks up the point under the cursor, or makes one there and picks that
-     * up. Releasing puts it down.
-     *
-     * The point rides the cursor for as long as the button is held, so placing one is press,
-     * steer, release - you are never asked to be accurate before you can see the result. A
-     * relative cursor is not something you land on a target in one go.
-     */
-    private fun pressPathPoint(state: DrawingState) {
-        val hit = state.hoveredPathPoint
-        if (hit >= 0) {
-            session.update { it.copy(grabbedPathPoint = hit, pathPointsFromPress = 0) }
-            return
-        }
+    fun togglePathClosed() = path.toggleClosed()
 
-        // The very first press drops an anchor and starts the point after it in the same
-        // motion, so one hold draws a straight line exactly the way the straight-line tool
-        // does. Otherwise that first hold would have nothing to show for itself: a lone point
-        // has no curve to preview, and you would be aiming the start of a line you cannot see.
-        val added = if (state.pathPoints.isEmpty()) 2 else 1
-        val points = state.pathPoints.toMutableList()
-        repeat(added) { points.add(PathPoint(state.brushPosition)) }
-        session.update { it.copy(
-            pathPoints = points,
-            grabbedPathPoint = points.lastIndex,
-            pathPointsFromPress = added
-        ) }
-        repaintPathPreview()
-    }
+    fun abortPathPress() = path.abortPress()
 
-    private fun dropPathPoint() {
-        val state = session.value
-        if (state.grabbedPathPoint < 0) return
+    fun togglePathPointCorner() = path.togglePointCorner()
 
-        // Landing one end on the other joins them. The held point is removed rather than left
-        // stacked on its twin: two handles at the same spot cannot be told apart or picked up
-        // separately, so keeping both would leave one of them permanently out of reach.
-        if (state.pathClosingCandidate) {
-            val points = state.pathPoints.toMutableList()
-            points.removeAt(state.grabbedPathPoint)
-            session.update { it.copy(
-                pathPoints = points,
-                pathClosed = true,
-                grabbedPathPoint = -1,
-                pathPointsFromPress = 0
-            ) }
-            repaintPathPreview()
-            return
-        }
-        session.update { it.copy(grabbedPathPoint = -1, pathPointsFromPress = 0) }
-    }
+    fun cancelPath() = path.cancel()
 
-    /**
-     * Joins the two ends, or parts them again.
-     *
-     * Reopening does not hand back the point the join swallowed - you merged two ends into
-     * one, and undoing the join does not split it. It is here mostly so a close is never a
-     * trap, and so ends that are nowhere near each other can still be joined without dragging
-     * one across the whole drawing to reach the other.
-     */
-    fun togglePathClosed() {
-        if (session.value.pathPoints.size < 3) return
-        session.update { it.copy(pathClosed = !it.pathClosed) }
-        repaintPathPreview()
-    }
-
-    /**
-     * Abandons the press, taking the point back with it if the press is what created it.
-     *
-     * For the button's own drag-to-reposition: that gesture starts as a press like any other,
-     * so by the time it declares itself a drag a point has already been placed. Leaving it
-     * there would strand one every time the button is moved, and there is no way to remove a
-     * single point once it exists.
-     */
-    fun abortPathPress() {
-        val state = session.value
-        if (state.grabbedPathPoint < 0) return
-        if (state.pathPointsFromPress <= 0) {
-            dropPathPoint()
-            return
-        }
-        // Everything this press added, which is both points when it was the first one - leaving
-        // the anchor behind would strand a path that never got its second end.
-        val points = state.pathPoints.toMutableList()
-        repeat(state.pathPointsFromPress) { if (points.isNotEmpty()) points.removeAt(points.lastIndex) }
-        session.update { it.copy(pathPoints = points, grabbedPathPoint = -1, pathPointsFromPress = 0) }
-        repaintPathPreview()
-    }
-
-    /**
-     * Flips the point under the cursor between rounded and sharp.
-     *
-     * Acts on the held point if there is one, otherwise on whatever is under the cursor, so it
-     * works the same whether you are mid-drag or just passing over.
-     */
-    fun togglePathPointCorner() {
-        val state = session.value
-        val index = if (state.grabbedPathPoint >= 0) state.grabbedPathPoint else state.hoveredPathPoint
-        if (index !in state.pathPoints.indices) return
-        val points = state.pathPoints.toMutableList()
-        points[index] = points[index].copy(isCorner = !points[index].isCorner)
-        session.update { it.copy(pathPoints = points) }
-        repaintPathPreview()
-    }
-
-    /** Throws away the pending path without touching the layer. */
-    fun cancelPath() {
-        if (session.value.pathPoints.isEmpty()) return
-        engine.clearTarget()
-        session.update { it.copy(
-            pathPoints = emptyList(),
-            grabbedPathPoint = -1,
-            pathPointsFromPress = 0,
-            pathClosed = false,
-            strokeBitmap = engine.strokeBitmap,
-            renderVersion = it.renderVersion + 1
-        ) }
-    }
-
-    /**
-     * Stamps the curve onto the active layer and clears the path.
-     *
-     * Deliberately the same tail as a finished stroke - one history entry, one trace for undo
-     * to leave behind, one scheduled save. A path is a stroke that took a while to describe,
-     * and nothing downstream should be able to tell the difference.
-     */
-    fun commitPath() {
-        val state = session.value
-        if (state.pathPoints.size < 2) return
-        if (state.layers.find { it.id == state.activeLayerId }?.isLocked == true) return
-
-        engine.drawPolyline(PathGeometry.flatten(state.pathPoints, state.pathClosed), state)
-        history.save(strokeSnapshotSpec(session.value))
-        commitStrokeToLayer()
-        if (state.keepUndoneStrokes) captureStrokeTrace(state)?.let { history.attachStrokeTrace(it) }
-
-        engine.clearTarget()
-        session.update { it.copy(
-            pathPoints = emptyList(),
-            grabbedPathPoint = -1,
-            pathPointsFromPress = 0,
-            pathClosed = false,
-            strokeBitmap = engine.strokeBitmap,
-            renderVersion = it.renderVersion + 1
-        ) }
-        persistence.scheduleLayerSave(state.activeLayerId)
-        persistence.touchProject()
-    }
-
-    private fun repaintPathPreview() {
-        val state = session.value
-        if (state.pathPoints.size < 2) {
-            engine.clearTarget()
-        } else {
-            engine.drawPolyline(PathGeometry.flatten(state.pathPoints, state.pathClosed), state)
-        }
-        session.update { it.copy(
-            strokeBitmap = engine.strokeBitmap,
-            renderVersion = it.renderVersion + 1
-        ) }
-    }
+    fun commitPath() = path.commit()
 
     // ============================ Selection ============================
 
@@ -1097,53 +934,9 @@ class DrawingViewModel(
     }
 
     /**
-     * Preference writes waiting out [PREFERENCE_SETTLE_MS], the newest one per store key.
-     *
-     * A slider calls its setter once per frame, and each of those was a DataStore edit - which
-     * rewrites and fsyncs the whole preference file. Sixty of those a second is work the drag
-     * has to share the device with. Keyed on the row each one lands in, so the newest value of
-     * a setting replaces the pending one instead of queueing behind it, and two settings moved
-     * in the same breath can't displace each other.
-     */
-    private val pendingPreferences = mutableMapOf<Preferences.Key<*>, suspend () -> Unit>()
-    private var preferenceFlushJob: Job? = null
-
-    /**
-     * Holds [persist] until the setting stops moving.
-     *
-     * Restarted on each change rather than left to tick, so a slider that has settled is
-     * written promptly while one still under the thumb is not written at all.
-     */
-    private fun persistPreference(key: Preferences.Key<*>, persist: suspend () -> Unit) {
-        synchronized(pendingPreferences) { pendingPreferences[key] = persist }
-        preferenceFlushJob?.cancel()
-        // persistScope, not viewModelScope: see flushPreferences at onCleared.
-        preferenceFlushJob = persistScope.launch {
-            delay(PREFERENCE_SETTLE_MS)
-            flushPreferences()
-        }
-    }
-
-    /**
-     * Writes everything still waiting.
-     *
-     * NonCancellable because the next change cancels this job to restart the wait: a flush
-     * caught halfway through would have emptied the map of writes it never made, and the
-     * setting they carried would be gone.
-     */
-    private suspend fun flushPreferences() = withContext(NonCancellable) {
-        val due = synchronized(pendingPreferences) {
-            pendingPreferences.values.toList().also { pendingPreferences.clear() }
-        }
-        due.forEach { it() }
-    }
-
-    /**
-     * Applies a brush setting, which is stored as a global default rather than per project.
-     *
-     * [key] is the row the write lands in, and is what the pending write is filed under - so it
-     * is the store's own key rather than a name invented here, which two settings could collide
-     * on without anything noticing.
+     * Applies a brush setting, which is stored as a global default rather than per project:
+     * live in the session at once, and on disk once it stops moving - see
+     * [PreferenceWriteBuffer]. [key] is the store's key for the row [persist] writes.
      */
     private fun updatePreference(
         key: Preferences.Key<*>,
@@ -1151,7 +944,7 @@ class DrawingViewModel(
         update: (DrawingState) -> DrawingState
     ) {
         session.update(update)
-        persistPreference(key, persist)
+        preferenceWrites.write(key, persist)
     }
 
     fun selectColor(color: Color) = updateProjectSetting { it.copy(selectedColor = color, isEyeDropperMode = false) }
@@ -1249,7 +1042,6 @@ class DrawingViewModel(
         session.update { it.copy(isFullscreen = !it.isFullscreen) }
     }
 
-    /** Arms or disarms the cursor springing back to each stroke's starting point. */
     /** Opens or closes the magnified window onto the canvas under the brush. */
     fun toggleLoupe() {
         session.update { it.copy(isLoupeActive = !it.isLoupeActive) }
@@ -1479,7 +1271,6 @@ class DrawingViewModel(
         persistence.flushNow()
         // Same reason: a setting nudged on the way out has not waited out its delay yet, and
         // these are globals now - the next project would open with the old value.
-        preferenceFlushJob?.cancel()
-        persistScope.launch { flushPreferences() }
+        preferenceWrites.flushNow()
     }
 }
