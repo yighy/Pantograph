@@ -14,8 +14,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.max
-import kotlin.math.min
 
 /**
  * Gets pixels and project metadata onto disk without stalling the stroke.
@@ -139,26 +137,9 @@ class ProjectPersistence(
     private suspend fun generateThumbnailNow(state: DrawingState) {
         if (state.canvasWidth <= 0 || state.canvasHeight <= 0) return
         withContext(Dispatchers.Default) {
-            // Render directly at thumbnail size (max 512px): a full-resolution render + PNG
-            // encode is wasted work for a home-grid preview
-            val scale = min(1f, 512f / max(state.canvasWidth, state.canvasHeight))
-            val tw = (state.canvasWidth * scale).toInt().coerceAtLeast(1)
-            val th = (state.canvasHeight * scale).toInt().coerceAtLeast(1)
-            val thumb = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888)
-            val canvas = Canvas(thumb)
-            canvas.drawColor(android.graphics.Color.WHITE)
-            canvas.scale(scale, scale)
-            // Reference layers are working aids, not artwork: they are on the canvas to be
-            // traced over, and have no business in the picture of the project.
-            state.layers.filter { it.isVisible && !it.isTrace }.forEach { layer ->
-                session.layerBitmaps[layer.id]?.let {
-                    val paint = Paint().apply {
-                        alpha = (layer.opacity * 255).toInt()
-                        isFilterBitmap = true
-                    }
-                    canvas.drawBitmap(it, 0f, 0f, paint)
-                }
-            }
+            // At thumbnail size: a full-resolution render and PNG encode is wasted work for a
+            // home-grid preview.
+            val thumb = CanvasComposite.render(state, session.layerBitmaps, 512) ?: return@withContext
             val thumbFile = File(internalFilesDir, "thumb_${projectId}.png")
             FileOutputStream(thumbFile).use { out -> thumb.compress(Bitmap.CompressFormat.PNG, 90, out) }
             repository.updateProjectThumbnail(projectId, thumbFile.absolutePath)
@@ -167,8 +148,20 @@ class ProjectPersistence(
 
     // ============================ Project row ============================
 
-    /** Marks the project row stale; the write is throttled to at most once a second. */
+    /**
+     * Told each time the drawing changes, as it happens - the timelapse's cue. Called on the
+     * main thread, from [touchProject].
+     */
+    var onTouched: (() -> Unit)? = null
+
+    /**
+     * Marks the project row stale; the write is throttled to at most once a second.
+     *
+     * Every change to what the drawing shows ends here - strokes, fills, undo, layers,
+     * selections - which is why [onTouched] hangs off it.
+     */
     fun touchProject() {
+        onTouched?.invoke()
         projectMetaDirty = true
         if (projectMetaJob?.isActive != true) {
             projectMetaJob = scope.launch {

@@ -56,6 +56,8 @@ fun LayersAndActionsSection(
     var showMenu by remember { mutableStateOf(false) }
     var showImportOptions by remember { mutableStateOf(false) }
     var showAboutDialog by remember { mutableStateOf(false) }
+    var showTimelapseDialog by remember { mutableStateOf(false) }
+    val timelapse by viewModel.timelapseInfo.collectAsState()
 
     LaunchedEffect(showMenu) {
         if (!showMenu) showImportOptions = false
@@ -179,6 +181,11 @@ fun LayersAndActionsSection(
                         onClick = { viewModel.exportProject(context, "png"); showMenu = false },
                         leadingIcon = { Icon(Icons.Rounded.IosShare, null) }
                     )
+                    DropdownMenuItem(
+                        text = { Text("Timelapse") },
+                        onClick = { showTimelapseDialog = true; showMenu = false },
+                        leadingIcon = { Icon(Icons.Rounded.Timelapse, null) }
+                    )
                     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                     DropdownMenuItem(
                         text = { Text("Settings") },
@@ -206,14 +213,16 @@ fun LayersAndActionsSection(
         // while the transition is still running, so reading activeTools directly emptied the
         // row on the first frame of the close and left an empty box to collapse on its own -
         // same reason lastEditingLayerId exists further down.
-        val anyChips = activeTools.isNotEmpty() || activeLayerLocked || hasTraces
+        val anyChips = activeTools.isNotEmpty() || activeLayerLocked || hasTraces || timelapse.recording
         var lastTools by remember { mutableStateOf(activeTools) }
         var lastLocked by remember { mutableStateOf(false) }
         var lastTraces by remember { mutableStateOf(false) }
+        var lastRecording by remember { mutableStateOf(false) }
         if (anyChips) {
             lastTools = activeTools
             lastLocked = activeLayerLocked
             lastTraces = hasTraces
+            lastRecording = timelapse.recording
         }
 
         AnimatedVisibility(
@@ -253,6 +262,18 @@ fun LayersAndActionsSection(
                         content = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
+                if (lastRecording) {
+                    // Always in sight while it records: it fills storage stroke by stroke, and
+                    // is otherwise easy to forget about. Red, the colour recording always is.
+                    ActiveStateChip(
+                        icon = Icons.Rounded.FiberManualRecord,
+                        label = "REC",
+                        description = "Recording a timelapse, tap to stop",
+                        onDismiss = { viewModel.setTimelapseRecording(false) },
+                        container = MaterialTheme.colorScheme.errorContainer,
+                        content = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
                 if (lastTraces) {
                     // Tertiary: neither a mode you armed nor something blocking you, just a
                     // surface that has filled up and can be emptied.
@@ -270,6 +291,10 @@ fun LayersAndActionsSection(
 
         if (showAboutDialog) {
             AboutDialog(onDismiss = { showAboutDialog = false })
+        }
+
+        if (showTimelapseDialog) {
+            TimelapseDialog(viewModel, onDismiss = { showTimelapseDialog = false })
         }
 
         // Slide only, no fade: the fade forces an alpha compositing layer which drops the

@@ -107,6 +107,7 @@ class DrawingViewModel(
     private val layers = LayerController(session, repository, projectId, history, persistence, viewModelScope)
     private val selection = SelectionController(session, engine, history, persistence, repository, projectId, viewModelScope)
     private val path = PathController(session, engine, persistence) { state ->
+        timelapse.onStroke()
         history.save(strokeSnapshotSpec(session.value))
         commitStrokeToLayer()
         if (state.keepUndoneStrokes) captureStrokeTrace(state)?.let { history.attachStrokeTrace(it) }
@@ -114,6 +115,7 @@ class DrawingViewModel(
     private val viewport = CanvasTransformController(session, viewModelScope)
     private val brushAssets = BrushAssetLoader(session, viewModelScope)
     private val referenceImage = ReferenceImageController(session, persistence, viewModelScope)
+    private val timelapse = TimelapseRecorder(session, projectId, internalFilesDir, viewModelScope)
     private val presets = BrushPresetController(
         session, repository, brushAssets, persistence, preferenceManager, context, viewModelScope
     )
@@ -122,6 +124,7 @@ class DrawingViewModel(
         // Closes the loop the constructors cannot: history has to exist before the layer
         // controller, and only the layer controller can put a trace anywhere.
         history.onStrokeUndone = { layers.leaveTrace(it) }
+        persistence.onTouched = { timelapse.onDrawingChanged() }
         loadProject()
         observeSettings()
     }
@@ -522,6 +525,7 @@ class DrawingViewModel(
 
             engine.endStroke()
             session.update { it.copy(isPenDown = false, currentPath = null) }
+            timelapse.onStroke()
             persistence.scheduleLayerSave(state.activeLayerId)
             persistence.touchProject()
         }
@@ -627,6 +631,7 @@ class DrawingViewModel(
 
             withContext(Dispatchers.Main) {
                 session.bumpRender()
+                timelapse.onStroke()
                 persistence.scheduleLayerSave(activeId)
                 persistence.touchProject()
             }
@@ -1252,6 +1257,14 @@ class DrawingViewModel(
     fun setReferenceImage(context: android.content.Context, uri: String) = referenceImage.set(context, uri)
     fun removeReferenceImage() = referenceImage.remove()
     fun updateReferenceImage(pan: Offset, zoom: Float, rotation: Float) = referenceImage.update(pan, zoom, rotation)
+
+    // ============================ Timelapse ============================
+
+    val timelapseInfo: StateFlow<TimelapseInfo> = timelapse.info
+
+    fun setTimelapseRecording(on: Boolean) = timelapse.setRecording(on)
+
+    fun deleteTimelapse() = timelapse.delete()
 
     // ============================ Saving & export ============================
 

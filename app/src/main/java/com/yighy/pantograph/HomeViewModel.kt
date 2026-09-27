@@ -8,6 +8,7 @@ import com.yighy.pantograph.data.PreferenceManager
 import com.yighy.pantograph.data.ProjectRepository
 import com.yighy.pantograph.data.UpdateChecker
 import com.yighy.pantograph.drawing.DefaultBrushes
+import com.yighy.pantograph.drawing.TimelapseRecorder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -59,9 +60,10 @@ class HomeViewModel(
      * that still slip through - redoing a layer delete drops its row from inside the history
      * manager, which has no idea this directory exists.
      *
-     * Deliberately narrow. Only names of the exact shape "layer_<digits>.png" and
-     * "thumb_<digits>.png" are even considered, so the preferences datastore beside them, and
-     * anything else that ever moves in here, is not something this has to be told about.
+     * Deliberately narrow. Only names of the exact shape "layer_<digits>.png",
+     * "thumb_<digits>.png" and a "timelapse_<digits>" folder are even considered, so the
+     * preferences datastore beside them, and anything else that ever moves in here, is not
+     * something this has to be told about.
      */
     private fun sweepOrphanedFiles() {
         if (!sweptThisProcess.compareAndSet(false, true)) return
@@ -75,10 +77,12 @@ class HomeViewModel(
                         name.removeSurrounding("layer_", ".png").toLongOrNull()?.let { it !in layerIds }
                     name.startsWith("thumb_") && name.endsWith(".png") ->
                         name.removeSurrounding("thumb_", ".png").toLongOrNull()?.let { it !in projectIds }
+                    name.startsWith("timelapse_") && file.isDirectory ->
+                        name.removePrefix("timelapse_").toLongOrNull()?.let { it !in projectIds }
                     // A name that does not parse as an id is not ours to judge.
                     else -> null
                 }
-                if (orphan == true) file.delete()
+                if (orphan == true) file.deleteRecursively()
             }
         }
     }
@@ -108,6 +112,7 @@ class HomeViewModel(
             withContext(Dispatchers.IO) {
                 layerIds.forEach { File(internalFilesDir, "layer_$it.png").delete() }
                 File(internalFilesDir, "thumb_${project.id}.png").delete()
+                File(internalFilesDir, TimelapseRecorder.dirName(project.id)).deleteRecursively()
             }
         }
     }
