@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.yighy.pantograph.ui.theme.MotionTokens
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -115,8 +116,11 @@ fun LayersAndActionsSection(
                     Icon(Icons.Default.MoreVert, contentDescription = "More")
                 }
                 DropdownMenu(
-                    expanded = showMenu, 
+                    expanded = showMenu,
                     onDismissRequest = { showMenu = false },
+                    // Clear of the button: the buttons lost the padded container they used to
+                    // sit in, and the menu would otherwise touch their bottom edge.
+                    offset = DpOffset(0.dp, 8.dp),
                     shape = MaterialTheme.shapes.large,
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
                 ) {
@@ -329,6 +333,7 @@ private fun ToolsMenuButton(
         DropdownMenu(
             expanded = showTools,
             onDismissRequest = { showTools = false },
+            offset = DpOffset(0.dp, 8.dp),
             modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainerHigh)
         ) {
             // Tools grouped by function: view first, then paint tools, then selection tools
