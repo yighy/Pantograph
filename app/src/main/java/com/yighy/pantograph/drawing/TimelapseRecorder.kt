@@ -1,6 +1,11 @@
 package com.yighy.pantograph.drawing
 
+import android.content.ContentValues
+import android.content.Context
 import android.graphics.Bitmap
+import android.os.Environment
+import android.provider.MediaStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,6 +20,14 @@ import java.io.FileOutputStream
 import java.util.Properties
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
+
+/** Where an export of the timelapse has got to. */
+sealed interface TimelapseExport {
+    data object Idle : TimelapseExport
+    data class Running(val progress: Float) : TimelapseExport
+    data object Saved : TimelapseExport
+    data object Failed : TimelapseExport
+}
 
 /** What the timelapse dialog shows of a project's recording. */
 data class TimelapseInfo(
@@ -50,6 +63,9 @@ class TimelapseRecorder(
 
     private val _info = MutableStateFlow(TimelapseInfo())
     val info: StateFlow<TimelapseInfo> = _info
+
+    private val _export = MutableStateFlow<TimelapseExport>(TimelapseExport.Idle)
+    val export: StateFlow<TimelapseExport> = _export
 
     /** Every file operation takes this, so frames land in order and a delete is never half-done. */
     private val lock = Mutex()
@@ -131,6 +147,64 @@ class TimelapseRecorder(
                 bytes = 0
             }
             publish()
+        }
+    }
+
+    /**
+     * Makes a video of the frames, [targetSeconds] long or at their own pace when null, and saves
+     * it to the gallery under Movies/Pantograph.
+     *
+     * Holds the lock throughout, so no frame is thinned out from under the encoder; a change
+     * made meanwhile is captured once it is done.
+     */
+    fun exportVideo(context: Context, projectName: String, targetSeconds: Int?) {
+        if (_export.value is TimelapseExport.Running) return
+        _export.value = TimelapseExport.Running(0f)
+        scope.launch(Dispatchers.Default) {
+            loaded.await()
+            val temp = File(context.cacheDir, "timelapse_export.mp4")
+            val saved = try {
+                lock.withLock {
+                    val frames = frameFiles()
+                    val plan = TimelapseTiming.plan(frames.size, targetSeconds)
+                    if (plan.isEmpty()) return@withLock false
+                    TimelapseExporter.encode(frames, plan, temp) { _export.value = TimelapseExport.Running(it) }
+                    true
+                } && saveToGallery(context, temp, projectName)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("TimelapseRecorder", "Export failed", e)
+                false
+            } finally {
+                temp.delete()
+            }
+            _export.value = if (saved) TimelapseExport.Saved else TimelapseExport.Failed
+        }
+    }
+
+    /** Back to idle once its outcome has been seen, so the next opening starts clean. */
+    fun clearExportResult() {
+        if (_export.value !is TimelapseExport.Running) _export.value = TimelapseExport.Idle
+    }
+
+    private fun saveToGallery(context: Context, video: File, projectName: String): Boolean {
+        val resolver = context.contentResolver
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, "Timelapse_${projectName}_${System.currentTimeMillis()}.mp4")
+            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_MOVIES + "/Pantograph")
+            // Hidden from the gallery until it is whole.
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values) ?: return false
+        return try {
+            resolver.openOutputStream(uri)?.use { out -> video.inputStream().use { it.copyTo(out) } } ?: error("No stream")
+            resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            true
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            throw e
         }
     }
 

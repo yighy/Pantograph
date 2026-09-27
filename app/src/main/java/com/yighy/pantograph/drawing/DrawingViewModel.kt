@@ -1266,6 +1266,14 @@ class DrawingViewModel(
 
     fun deleteTimelapse() = timelapse.delete()
 
+    val timelapseExport: StateFlow<TimelapseExport> = timelapse.export
+
+    /** [targetSeconds] null keeps the frames' own pace. */
+    fun exportTimelapse(targetSeconds: Int?) =
+        timelapse.exportVideo(context, session.value.projectName, targetSeconds)
+
+    fun clearTimelapseExportResult() = timelapse.clearExportResult()
+
     // ============================ Saving & export ============================
 
     suspend fun saveProjectBrushSettings() = persistence.saveProjectSettings()
