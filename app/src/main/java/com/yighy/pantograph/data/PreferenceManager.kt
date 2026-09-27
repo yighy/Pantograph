@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -63,6 +64,10 @@ class PreferenceManager(private val context: Context) {
         val SMUDGE_KEY = floatPreferencesKey("smudge")
         val SMUDGE_LENGTH_KEY = floatPreferencesKey("smudge_length")
         val KEEP_UNDONE_STROKES_KEY = booleanPreferencesKey("keep_undone_strokes")
+        val CHECK_FOR_UPDATES_KEY = booleanPreferencesKey("check_for_updates")
+        val LAST_UPDATE_CHECK_KEY = longPreferencesKey("last_update_check")
+        val LATEST_RELEASE_KEY = stringPreferencesKey("latest_release")
+        val DISMISSED_RELEASE_KEY = stringPreferencesKey("dismissed_release")
     }
 
     // Every flow below ends in distinctUntilChanged, and it is load-bearing rather than tidy.
@@ -422,6 +427,44 @@ class PreferenceManager(private val context: Context) {
     suspend fun setSatelliteGateSensitivity(sensitivity: Float) {
         context.dataStore.edit { preferences ->
             preferences[SATELLITE_GATE_SENSITIVITY_KEY] = sensitivity
+        }
+    }
+
+    // ---- updates, see UpdateChecker ----
+
+    /** Off until turned on: it is the one thing in the app that goes out to the network. */
+    val checkForUpdates: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[CHECK_FOR_UPDATES_KEY] ?: false
+    }.distinctUntilChanged()
+
+    suspend fun setCheckForUpdates(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[CHECK_FOR_UPDATES_KEY] = enabled
+        }
+    }
+
+    /** The tag of the latest release GitHub last reported, or null when there was none. */
+    val latestRelease: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[LATEST_RELEASE_KEY]
+    }.distinctUntilChanged()
+
+    /** The release whose notice was closed, so it stays closed - until a later one comes out. */
+    val dismissedRelease: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[DISMISSED_RELEASE_KEY]
+    }.distinctUntilChanged()
+
+    suspend fun lastUpdateCheck(): Long = context.dataStore.data.first()[LAST_UPDATE_CHECK_KEY] ?: 0L
+
+    suspend fun recordLatestRelease(tag: String?, checkedAt: Long) {
+        context.dataStore.edit { preferences ->
+            if (tag == null) preferences.remove(LATEST_RELEASE_KEY) else preferences[LATEST_RELEASE_KEY] = tag
+            preferences[LAST_UPDATE_CHECK_KEY] = checkedAt
+        }
+    }
+
+    suspend fun setDismissedRelease(tag: String) {
+        context.dataStore.edit { preferences ->
+            preferences[DISMISSED_RELEASE_KEY] = tag
         }
     }
 

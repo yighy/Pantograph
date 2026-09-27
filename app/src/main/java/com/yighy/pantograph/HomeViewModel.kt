@@ -6,6 +6,7 @@ import com.yighy.pantograph.data.ProjectEntity
 import com.yighy.pantograph.data.BrushFolderEntity
 import com.yighy.pantograph.data.PreferenceManager
 import com.yighy.pantograph.data.ProjectRepository
+import com.yighy.pantograph.data.UpdateChecker
 import com.yighy.pantograph.drawing.DefaultBrushes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
@@ -28,6 +29,9 @@ class HomeViewModel(
     init {
         sweepOrphanedFiles()
         seedDefaultBrushes()
+        // On opening the app, which is where its notice shows. At most once a day, and not at
+        // all with the setting off.
+        viewModelScope.launch { UpdateChecker(preferenceManager).checkIfDue() }
     }
 
     /**

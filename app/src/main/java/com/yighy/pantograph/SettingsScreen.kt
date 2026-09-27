@@ -7,6 +7,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Gesture
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -14,11 +15,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.yighy.pantograph.data.AppTheme
 import com.yighy.pantograph.data.PreferenceManager
+import com.yighy.pantograph.data.ReleaseVersion
+import com.yighy.pantograph.data.UpdateChecker
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -38,6 +42,12 @@ fun SettingsScreen(
     val undoRestoresCursor by preferenceManager.undoRestoresCursor.collectAsState(initial = true)
     val keepUndoneStrokes by preferenceManager.keepUndoneStrokes.collectAsState(initial = false)
     val satelliteGateSensitivity by preferenceManager.satelliteGateSensitivity.collectAsState(initial = 1f)
+    val checkForUpdates by preferenceManager.checkForUpdates.collectAsState(initial = false)
+    val updateChecker = remember(preferenceManager) { UpdateChecker(preferenceManager) }
+    // Only the result of a check asked for here; the automatic one reports on the home screen.
+    var updateResult by remember { mutableStateOf<UpdateChecker.Result?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    val uriHandler = LocalUriHandler.current
     val context = LocalContext.current
     val versionName = remember {
         try {
@@ -186,6 +196,54 @@ fun SettingsScreen(
                 )
             }
             
+            SettingsSection(title = "Updates", icon = Icons.Rounded.SystemUpdate) {
+                SettingsToggleRow(
+                    label = "Check For Updates",
+                    subtitle = "Once a day, asks GitHub for the latest release and says so on the home screen. Nothing is downloaded",
+                    checked = checkForUpdates,
+                    onCheckedChange = { scope.launch { preferenceManager.setCheckForUpdates(it) } }
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = when (val r = updateResult) {
+                            null -> if (checking) "Checking..." else "Installed: ${versionName ?: BuildConfig.VERSION_NAME}"
+                            is UpdateChecker.Result.Available -> "Version ${r.tag.removePrefix("v")} is available"
+                            UpdateChecker.Result.UpToDate -> "You have the latest version"
+                            UpdateChecker.Result.Failed -> "Couldn't reach GitHub"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    val available = updateResult as? UpdateChecker.Result.Available
+                    if (available != null) {
+                        FilledTonalButton(onClick = { uriHandler.openUri(ReleaseVersion.pageUrl(available.tag)) }) {
+                            Text("View")
+                        }
+                    } else {
+                        // Asked for by hand, so it goes out even with the automatic check off.
+                        OutlinedButton(
+                            enabled = !checking,
+                            onClick = {
+                                checking = true
+                                updateResult = null
+                                scope.launch {
+                                    updateResult = updateChecker.check()
+                                    checking = false
+                                }
+                            }
+                        ) {
+                            Text("Check Now")
+                        }
+                    }
+                }
+            }
+
             versionName?.let {
                 Text(
                     text = "${stringResource(R.string.app_name)} $it",

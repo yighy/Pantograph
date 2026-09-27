@@ -32,13 +32,62 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalUriHandler
 import coil.compose.AsyncImage
 import com.yighy.pantograph.data.PreferenceManager
 import com.yighy.pantograph.data.ProjectEntity
+import com.yighy.pantograph.data.ReleaseVersion
+import kotlinx.coroutines.launch
 import androidx.compose.ui.res.stringResource
 import com.yighy.pantograph.ui.theme.MotionTokens
 import java.text.SimpleDateFormat
 import java.util.*
+
+/**
+ * A newer release than the one installed, with a link to its page. Shown until that version is
+ * installed or the notice is closed; closing it holds for that release only, so the next one
+ * still gets a notice. Nothing here downloads anything - the page is where the APK is.
+ */
+@Composable
+private fun UpdateNotice(preferenceManager: PreferenceManager) {
+    val enabled by preferenceManager.checkForUpdates.collectAsState(initial = false)
+    val latest by preferenceManager.latestRelease.collectAsState(initial = null)
+    val dismissed by preferenceManager.dismissedRelease.collectAsState(initial = null)
+    val uriHandler = LocalUriHandler.current
+    val scope = rememberCoroutineScope()
+    val tag = latest?.takeIf { enabled && it != dismissed && ReleaseVersion.isNewer(it, BuildConfig.VERSION_NAME) }
+
+    // Held on to for the exit animation, which runs after the tag has gone.
+    var shown by remember { mutableStateOf("") }
+    if (tag != null) shown = tag
+
+    AnimatedVisibility(visible = tag != null) {
+        Surface(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            shape = MaterialTheme.shapes.large,
+            color = MaterialTheme.colorScheme.secondaryContainer
+        ) {
+            Row(
+                modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.SystemUpdate, contentDescription = null)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "Version ${shown.removePrefix("v")} is available",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                TextButton(onClick = { scope.launch { preferenceManager.setDismissedRelease(shown) } }) {
+                    Text("Later")
+                }
+                FilledTonalButton(onClick = { uriHandler.openUri(ReleaseVersion.pageUrl(shown)) }) {
+                    Text("View")
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,6 +135,7 @@ fun HomeScreen(
         }
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues).fillMaxSize()) {
+            UpdateNotice(preferenceManager)
             Box(modifier = Modifier.fillMaxSize()) {
             if (projects.isEmpty()) {
                 Column(
