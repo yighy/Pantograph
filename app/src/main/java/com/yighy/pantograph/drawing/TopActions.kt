@@ -2,7 +2,6 @@ package com.yighy.pantograph.drawing
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -23,6 +22,18 @@ import androidx.compose.ui.unit.dp
 import com.yighy.pantograph.ui.theme.MotionTokens
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 
 @Composable
 fun LayersAndActionsSection(
@@ -454,5 +465,97 @@ private fun ToolsMenuButton(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+fun ExtraToolItem(
+    label: String,
+    selected: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    // Long-press pins this tool to the quick-access satellite. Pinning lives here, where the
+    // entries are labelled and have room, rather than on the satellite itself - a press-and-
+    // hold there would collide with the drag idiom the other two satellites teach.
+    isPinned: Boolean = false,
+    onTogglePin: (() -> Unit)? = null,
+    // Last so the trailing lambda at the call sites still binds to it.
+    onClick: () -> Unit
+) {
+    val haptics = LocalHapticFeedback.current
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box {
+            // The Text below is the accessible name, so the icon stays decorative.
+            ToolToggleButton(
+                selected = selected,
+                onClick = onClick,
+                icon = icon,
+                contentDescription = null,
+                onLongClick = onTogglePin?.let {
+                    {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        it()
+                    }
+                }
+            )
+            if (isPinned) {
+                Icon(
+                    Icons.Rounded.PushPin,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.align(Alignment.TopEnd).size(12.dp)
+                )
+            }
+        }
+        Text(label, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+@Composable
+@OptIn(ExperimentalFoundationApi::class)
+fun ToolToggleButton(
+    selected: Boolean,
+    onClick: () -> Unit,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    // Null only where a visible text label already names the button (see ExtraToolItem);
+    // otherwise this is the button's only name for screen readers.
+    contentDescription: String?,
+    selectedColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
+    selectedContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    onLongClick: (() -> Unit)? = null
+) {
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clip(MaterialTheme.shapes.medium)
+            // Exposed as a selectable button so TalkBack announces the open/closed state
+            // of the panel this toggle controls, not just its name.
+            .semantics { this.selected = selected }
+            .then(
+                if (onLongClick == null) {
+                    Modifier.clickable(onClick = onClick, role = Role.Button)
+                } else {
+                    Modifier.combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                        role = Role.Button
+                    )
+                }
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(selectedContainerColor)
+            )
+        }
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (selected) selectedColor else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
