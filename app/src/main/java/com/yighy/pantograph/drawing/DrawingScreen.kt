@@ -53,6 +53,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.Dp
@@ -489,6 +490,9 @@ private val READOUT_MARGIN = 8.dp
 /** Room to spare before the readout returns above - see [ReadoutPlacement.staysAbove]. */
 private val READOUT_HYSTERESIS = 16.dp
 
+/** How far past the middle the finger goes before the readout changes halves. */
+private val READOUT_SIDE_HYSTERESIS = 16.dp
+
 /**
  * Hands [ReadoutPlacement] the finger in window coordinates. Which side is decided elsewhere,
  * in the gesture: the choice depends on the side it was on a moment ago, and a position
@@ -501,6 +505,7 @@ private data class AboveOrBelowFinger(
     val fingerX: Float,
     val fingerY: Float,
     val above: Boolean,
+    val leansLeft: Boolean,
     val gapAbovePx: Int,
     val gapBelowPx: Int,
     val marginPx: Int
@@ -520,6 +525,7 @@ private data class AboveOrBelowFinger(
             windowWidth = windowSize.width,
             windowHeight = windowSize.height,
             above = above,
+            leansLeft = leansLeft,
             gapAbove = gapAbovePx,
             gapBelow = gapBelowPx,
             margin = marginPx
@@ -580,11 +586,15 @@ private fun ToolStateChip(
     // Where the finger is on the chip, for the readout to sit above or below it.
     var fingerX by remember { mutableFloatStateOf(0f) }
     var fingerY by remember { mutableFloatStateOf(0f) }
-    // What deciding the readout's side needs: where the chip is in the window, how tall the
-    // readout is - an estimate until it has been drawn once - and which side it is on now.
+    // What deciding the readout's sides needs: where the chip is in the window, how wide the
+    // window is, how tall the readout is - an estimate until it has been drawn once - and which
+    // sides it is on now.
     var chipTopInWindow by remember { mutableFloatStateOf(0f) }
+    var chipLeftInWindow by remember { mutableFloatStateOf(0f) }
+    var windowWidthPx by remember { mutableIntStateOf(0) }
     var readoutHeightPx by remember { mutableIntStateOf(with(density) { 44.dp.roundToPx() }) }
     var readoutAbove by remember { mutableStateOf(true) }
+    var readoutLeft by remember { mutableStateOf(true) }
     // The gesture outlives recompositions of the chip; reading the dismiss through this makes
     // a tap act on the chip as it is when the finger lifts, not as it was when it landed.
     val currentDismiss by rememberUpdatedState(onDismiss)
@@ -623,6 +633,10 @@ private fun ToolStateChip(
             val gapAbovePx = READOUT_GAP_ABOVE.roundToPx()
             val readoutMarginPx = READOUT_MARGIN.roundToPx()
             val hysteresisPx = READOUT_HYSTERESIS.roundToPx()
+            val sideHysteresisPx = READOUT_SIDE_HYSTERESIS.roundToPx()
+            readoutLeft = ReadoutPlacement.leansLeft(
+                (chipLeftInWindow + down.position.x).roundToInt(), windowWidthPx, null, sideHysteresisPx
+            )
             // Only a real lift counts as a tap. A cancelled gesture also leaves the loop, and
             // turning a tool off because the system took the pointer away is not a request.
             var released = false
@@ -652,6 +666,9 @@ private fun ToolStateChip(
                         margin = readoutMarginPx,
                         wasAbove = readoutAbove,
                         hysteresis = hysteresisPx
+                    )
+                    readoutLeft = ReadoutPlacement.leansLeft(
+                        (chipLeftInWindow + change.position.x).roundToInt(), windowWidthPx, readoutLeft, sideHysteresisPx
                     )
                     anchorX = GateMath.clampColumnAnchor(
                         anchorX = anchorX,
@@ -741,7 +758,12 @@ private fun ToolStateChip(
 
     // The box is the popup's anchor: it is exactly the chip, which is what the finger
     // coordinates from the gesture are relative to.
-    Box(modifier = Modifier.onGloballyPositioned { chipTopInWindow = it.positionInWindow().y }) {
+    Box(modifier = Modifier.onGloballyPositioned {
+        val inWindow = it.positionInWindow()
+        chipTopInWindow = inWindow.y
+        chipLeftInWindow = inWindow.x
+        windowWidthPx = it.findRootCoordinates().size.width
+    }) {
         ActiveStateChip(
             icon = tool.icon,
             label = tool.label,
@@ -768,6 +790,7 @@ private fun ToolStateChip(
                     fingerX = fingerX,
                     fingerY = fingerY,
                     above = readoutAbove,
+                    leansLeft = readoutLeft,
                     gapAbovePx = with(density) { READOUT_GAP_ABOVE.roundToPx() },
                     gapBelowPx = with(density) { READOUT_GAP_BELOW.roundToPx() },
                     marginPx = with(density) { READOUT_MARGIN.roundToPx() }
