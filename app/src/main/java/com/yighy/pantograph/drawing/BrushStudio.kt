@@ -405,14 +405,11 @@ fun AdvancedBrushStudio(uiState: DrawingState, viewModel: DrawingViewModel, onDi
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Anti-aliasing", style = MaterialTheme.typography.labelSmall)
-                            Text(
-                                "Off gives hard, stepped edges. Softness has no effect without it",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                            )
-                        }
+                        Text(
+                            "Anti-aliasing",
+                            style = MaterialTheme.typography.labelSmall,
+                            modifier = Modifier.weight(1f)
+                        )
                         Switch(
                             checked = uiState.antiAlias,
                             enabled = builtInTip,
