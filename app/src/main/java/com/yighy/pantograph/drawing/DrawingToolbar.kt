@@ -50,8 +50,11 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-/** Which expandable panel is currently open under the toolbar. Panels are mutually exclusive. */
+/** Which of the bar's three buttons is pressed, its panel up above the bar. At most one. */
 enum class ToolbarPanel { None, Brush, Color, Settings }
+
+/** What the card above the bottom bar is showing. */
+private enum class ToolbarCard { Brush, Color, Settings, Path, Selection }
 
 @Composable
 fun DrawingToolbar(
@@ -63,11 +66,11 @@ fun DrawingToolbar(
     activePanel: ToolbarPanel,
     onActivePanelChange: (ToolbarPanel) -> Unit,
     /**
-     * Strips this back to the panels an armed tool brings with it, and hides the bar entirely
-     * when no tool has brought one. Fullscreen sets it: the buttons belong to the chrome it is
-     * there to remove, the three panels behind them are reachable from the satellites, and a
-     * tool's values are on its chip - but nothing else reaches the path and selection commands,
-     * which is how fullscreen came to arm tools it gave you no way to finish using.
+     * Strips this back to the panels an armed tool brings with it. Fullscreen sets it: the
+     * buttons belong to the chrome it is there to remove, the three panels behind them are
+     * reachable from the satellites, and a tool's values are on its chip - but nothing else
+     * reaches the path and selection commands, which is how fullscreen came to arm tools it
+     * gave you no way to finish using.
      */
     armedToolsOnly: Boolean = false,
     modifier: Modifier = Modifier
@@ -84,211 +87,165 @@ fun DrawingToolbar(
     val isPathMode = drawingMode is DrawingMode.Path
     val isSelectionClosed by remember(viewModel) { viewModel.uiState.map { it.isSelectionClosed }.distinctUntilChanged() }.collectAsState(false)
 
-    // Entering a selection tool still closes whatever was open, so the selection controls are
-    // immediately visible. This one stays state-driven because it only ever *closes* panels -
-    // a repeated selection with nothing to change is correctly a no-op.
+    // Arming a tool that brings its own panel lets go of whichever of the three buttons was
+    // pressed, so the tool's commands are what shows. This one stays state-driven because it
+    // only ever *closes* panels - a repeated selection with nothing to change is correctly a
+    // no-op.
     LaunchedEffect(drawingMode) {
         if (drawingMode.isSelectionTool() || drawingMode is DrawingMode.Path) {
             onActivePanelChange(ToolbarPanel.None)
         }
     }
 
-    // What an armed tool has put on screen. Only the command panels count: a tool's values
-    // travel on its chip, so none of them bring the bar back - the chip is already the control,
-    // and the bar would be the chrome fullscreen is there to remove.
-    val anyArmedPanel = isPathMode || isSelectionMode || isSelectionClosed
-    // An empty bar would be a pill of chrome floating over the drawing, which is the one thing
-    // fullscreen is for. Returning leaves nothing at all.
-    if (armedToolsOnly && !anyArmedPanel) return
-
-    // Height and opacity both ride springs from the same family, so the fade lands with the
-    // collapse instead of finishing early and leaving an empty box to close on its own.
-    val visibilityAnimSpecEnter = remember {
-        expandVertically(
-            animationSpec = MotionTokens.panelTransition
-        ) + fadeIn(animationSpec = MotionTokens.expressiveEnter)
+    // One card at a time. A pressed button wins over an armed tool, so the brush or colour can
+    // be changed mid-selection; letting the button go brings the tool's panel back, since the
+    // tool is still armed. Only the command panels count for a tool: its values travel on its
+    // chip, which is already the control.
+    val toolCard = when {
+        isPathMode -> ToolbarCard.Path
+        isSelectionMode || isSelectionClosed -> ToolbarCard.Selection
+        else -> null
     }
-    val visibilityAnimSpecExit = remember {
-        shrinkVertically(
-            animationSpec = MotionTokens.panelTransition
-        ) + fadeOut(animationSpec = MotionTokens.expressiveExit)
+    val card = when {
+        armedToolsOnly -> toolCard
+        activePanel == ToolbarPanel.Brush -> ToolbarCard.Brush
+        activePanel == ToolbarPanel.Color -> ToolbarCard.Color
+        activePanel == ToolbarPanel.Settings -> ToolbarCard.Settings
+        else -> toolCard
     }
+    // The card keeps showing what it last showed while it animates away, rather than going
+    // blank for the length of its exit.
+    var lastCard by remember { mutableStateOf(card) }
+    if (card != null) lastCard = card
 
-    Surface(
-        modifier = modifier
-            // Collapsed, this is just five buttons - stretching it edge to edge left big
-            // dead margins in portrait. It hugs its row instead, and only takes the full
-            // width when a panel that actually needs it (sliders, swatches) is open.
-            // Caps the open width so landscape doesn't stretch sliders across 700dp of
-            // screen with the controls marooned at either end. Centred by the parent.
-            // Must come before the fill below: fillMaxWidth pins min width to the incoming
-            // max, and a widthIn placed after that has nothing left to constrain.
-            .widthIn(max = 480.dp)
-            .then(
-                if (activePanel == ToolbarPanel.None && !isSelectionMode && !isSelectionClosed) {
-                    Modifier.wrapContentWidth()
-                } else {
-                    Modifier.fillMaxWidth()
-                }
-            )
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-            .wrapContentHeight()
-            // No animateContentSize here: the panels' own expandVertically/shrinkVertically
-            // already animate this height. Running both made the Surface re-spring whatever
-            // height the children hadn't finished animating, which showed up as a jolt at
-            // the end of a collapse.
-            // Swipe down anywhere on the toolbar to collapse the open panel.
-            // Children (sliders, scrollable lists) consume their own gestures first,
-            // so this only sees swipes on non-interactive areas.
-            .pointerInput(Unit) {
-                var totalDrag = 0f
-                detectVerticalDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onVerticalDrag = { change, dragAmount ->
-                        totalDrag += dragAmount
-                        if (totalDrag > 0f) change.consume()
-                    },
-                    onDragEnd = {
-                        if (totalDrag > 80f) onActivePanelChange(ToolbarPanel.None)
-                    }
-                )
-            },
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        tonalElevation = 6.dp,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    fun toggle(panel: ToolbarPanel) = onActivePanelChange(if (activePanel == panel) ToolbarPanel.None else panel)
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        // Above the buttons that open it, at the end they sit at. On a phone held upright it
+        // takes the whole width anyway; in landscape it stays over the thumb that opened it.
+        horizontalAlignment = Alignment.End
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-            // Deliberately no spacedBy: a collapsing panel keeps its slot in this Column
-            // until its exit transition ends, so the gap reserved for it stayed at full
-            // size the whole way down and then vanished in a single frame. Each panel
-            // brings its own leading divider padding instead.
+        AnimatedVisibility(
+            visible = card != null,
+            // Grows up out of the bar, the way the panels used to grow out of it.
+            enter = expandVertically(MotionTokens.panelTransition, expandFrom = Alignment.Bottom) +
+                fadeIn(MotionTokens.expressiveEnter),
+            exit = shrinkVertically(MotionTokens.panelTransition, shrinkTowards = Alignment.Bottom) +
+                fadeOut(MotionTokens.expressiveExit)
         ) {
-            // Row 1: Tools & Navigation
-            // The extra-tools gate (Fill/Gradient/Lazy/Lasso/Rect/Wand/Color) moved to the
-            // top-right action group (see ToolsMenuButton in DrawingScreen.kt), which also
-            // absorbed the Fit-to-Screen action. Everything left here sits in one centered
-            // row, grouped by separators: Brush/Color, then Settings, then Undo/Redo. They
-            // used to be a centered group plus an end-pinned pair, but at the 48dp minimum
-            // touch target those two alignments overlap on a ~360dp-wide screen.
-            if (!armedToolsOnly) Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Brush & Color Picker
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ToolToggleButton(
-                        selected = activePanel == ToolbarPanel.Brush,
-                        onClick = { onActivePanelChange(if (activePanel == ToolbarPanel.Brush) ToolbarPanel.None else ToolbarPanel.Brush) },
-                        icon = Icons.Rounded.Brush,
-                        contentDescription = "Brush presets"
-                    )
-
-                    // Specialized Color Picker Button
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(MaterialTheme.shapes.medium)
-                            .semantics { this.selected = activePanel == ToolbarPanel.Color }
-                            .clickable(role = Role.Button) { onActivePanelChange(if (activePanel == ToolbarPanel.Color) ToolbarPanel.None else ToolbarPanel.Color) },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        // The swatch is the affordance, so nothing sits on top of it: the
-                        // ColorLens glyph used to cover the middle and leave only a thin
-                        // ring of the actual colour showing. Open state reads as a ring
-                        // around the swatch rather than a fill behind it, which the larger
-                        // swatch would otherwise hide.
-                        val isOpen = activePanel == ToolbarPanel.Color
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(selectedColor)
-                                .border(
-                                    width = if (isOpen) 2.dp else 1.dp,
-                                    color = if (isOpen) MaterialTheme.colorScheme.primary
-                                            else MaterialTheme.colorScheme.outlineVariant,
-                                    shape = CircleShape
-                                )
-                                .semantics { contentDescription = "Colour picker" }
+            Surface(
+                modifier = Modifier
+                    // Caps the width so landscape doesn't stretch sliders across 700dp of
+                    // screen with the controls marooned at either end. Must come before the
+                    // fill: fillMaxWidth pins min width to the incoming max, and a widthIn
+                    // placed after that has nothing left to constrain.
+                    .widthIn(max = 480.dp)
+                    .fillMaxWidth()
+                    // Clear of the buttons below, so the one holding it open stays in sight.
+                    .padding(bottom = 8.dp)
+                    // Swipe down anywhere on the card to let go of the button that opened it.
+                    // Children (sliders, scrollable lists) consume their own gestures first,
+                    // so this only sees swipes on non-interactive areas.
+                    .pointerInput(Unit) {
+                        var totalDrag = 0f
+                        detectVerticalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onVerticalDrag = { change, dragAmount ->
+                                totalDrag += dragAmount
+                                if (totalDrag > 0f) change.consume()
+                            },
+                            onDragEnd = {
+                                if (totalDrag > 80f) onActivePanelChange(ToolbarPanel.None)
+                            }
                         )
+                    },
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 6.dp,
+                shadowElevation = 2.dp,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
+                AnimatedContent(
+                    targetState = lastCard,
+                    transitionSpec = {
+                        (fadeIn(MotionTokens.expressiveEnter) togetherWith fadeOut(MotionTokens.expressiveExit))
+                            .using(SizeTransform(clip = true) { _, _ -> MotionTokens.panelTransition })
+                    },
+                    // Pinned to the bottom, so a change of height moves the top edge - the one
+                    // away from the buttons - and the card never slides under them.
+                    contentAlignment = Alignment.BottomCenter,
+                    label = "toolbar card"
+                ) { shown ->
+                    Box(modifier = Modifier.padding(12.dp)) {
+                        when (shown) {
+                            ToolbarCard.Brush -> QuickBrushPanel(viewModel, onOpenStudio = {
+                                onActivePanelChange(ToolbarPanel.None)
+                                onOpenBrushStudio()
+                            })
+                            ToolbarCard.Color -> ColorPickerContent(viewModel) { onActivePanelChange(ToolbarPanel.None) }
+                            ToolbarCard.Settings -> GlobalSettingsPanel(viewModel)
+                            // The tool owns the card while it is armed. Its commands are
+                            // frequent and repeated, so they belong under the thumb rather than
+                            // in the readout row across the screen; that row keeps only the
+                            // state chip.
+                            ToolbarCard.Path -> PathPanel(viewModel)
+                            ToolbarCard.Selection -> SelectionPanel(viewModel)
+                            null -> {}
+                        }
                     }
                 }
+            }
+        }
 
-                ToolbarSeparator()
-
-                // Settings
-                ToolToggleButton(
-                    selected = activePanel == ToolbarPanel.Settings,
-                    onClick = { onActivePanelChange(if (activePanel == ToolbarPanel.Settings) ToolbarPanel.None else ToolbarPanel.Settings) },
-                    icon = Icons.Rounded.Tune,
-                    contentDescription = "Tool settings"
-                )
-
-                ToolbarSeparator()
-
-                // History
-                IconButton(onClick = { viewModel.undo() }, enabled = canUndo && !isPenDown) {
-                    Icon(Icons.AutoMirrored.Rounded.Undo, "Undo", modifier = Modifier.size(20.dp))
+        // The bar itself: history under one thumb, the three panels under the other. Two
+        // groups in the corners rather than one row in the middle, so the middle of the bottom
+        // edge - where you would otherwise be drawing - stays clear.
+        if (!armedToolsOnly) Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ButtonGroup {
+                GroupedButton(GroupPosition.First, onClick = { viewModel.undo() }, enabled = canUndo && !isPenDown) {
+                    Icon(Icons.AutoMirrored.Rounded.Undo, "Undo")
                 }
-                IconButton(onClick = { viewModel.redo() }, enabled = canRedo && !isPenDown) {
-                    Icon(Icons.AutoMirrored.Rounded.Redo, "Redo", modifier = Modifier.size(20.dp))
+                GroupedButton(GroupPosition.Last, onClick = { viewModel.redo() }, enabled = canRedo && !isPenDown) {
+                    Icon(Icons.AutoMirrored.Rounded.Redo, "Redo")
                 }
             }
 
-            // Quick Brush Panel - Smooth Slide
-            AnimatedVisibility(
-                visible = !armedToolsOnly && activePanel == ToolbarPanel.Brush,
-                enter = visibilityAnimSpecEnter,
-                exit = visibilityAnimSpecExit
-            ) {
-                QuickBrushPanel(viewModel, onOpenStudio = {
-                    onActivePanelChange(ToolbarPanel.None)
-                    onOpenBrushStudio()
-                })
-            }
-
-            // Color Picker Panel - Smooth Slide
-            AnimatedVisibility(
-                visible = !armedToolsOnly && activePanel == ToolbarPanel.Color,
-                enter = visibilityAnimSpecEnter,
-                exit = visibilityAnimSpecExit
-            ) {
-                ColorPickerContent(viewModel) { onActivePanelChange(ToolbarPanel.None) }
-            }
-
-            // Global Settings Panel - Smooth Slide
-            AnimatedVisibility(
-                visible = !armedToolsOnly && activePanel == ToolbarPanel.Settings,
-                enter = visibilityAnimSpecEnter,
-                exit = visibilityAnimSpecExit
-            ) {
-                GlobalSettingsPanel(viewModel)
-            }
-
-            // Path Panel - the tool owns the toolbar while it is armed, the same way the
-            // selection tools do. Its commands are frequent and repeated, so they belong under
-            // the thumb rather than in the readout row across the screen; that row keeps only
-            // the state chip, which is exactly the split the selection tools already use.
-            AnimatedVisibility(
-                visible = isPathMode && activePanel == ToolbarPanel.None,
-                enter = visibilityAnimSpecEnter,
-                exit = visibilityAnimSpecExit
-            ) {
-                PathPanel(viewModel)
-            }
-
-            // Selection Panel - shown while a selection tool is active OR a selection is
-            // still alive (it clips drawing tools), as long as no other panel is open
-            AnimatedVisibility(
-                visible = (isSelectionMode || isSelectionClosed) && activePanel == ToolbarPanel.None,
-                enter = visibilityAnimSpecEnter,
-                exit = visibilityAnimSpecExit
-            ) {
-                SelectionPanel(viewModel)
+            // At most one of these is pressed, and it stays pressed for as long as its card is
+            // up. Colour at the far end, the one reached for most while drawing.
+            ButtonGroup {
+                GroupedButton(
+                    GroupPosition.First,
+                    onClick = { toggle(ToolbarPanel.Settings) },
+                    pressed = activePanel == ToolbarPanel.Settings,
+                    isToggle = true
+                ) {
+                    Icon(Icons.Rounded.Tune, "Tool settings")
+                }
+                GroupedButton(
+                    GroupPosition.Middle,
+                    onClick = { toggle(ToolbarPanel.Brush) },
+                    pressed = activePanel == ToolbarPanel.Brush,
+                    isToggle = true
+                ) {
+                    Icon(Icons.Rounded.Brush, "Brush presets")
+                }
+                // The whole button is the colour in hand, so it shows at a glance from across the
+                // screen, and the palette glyph on it still says what the button does. Opaque:
+                // the colour's alpha is a brush setting, not part of what it looks like here.
+                GroupedButton(
+                    GroupPosition.Last,
+                    onClick = { toggle(ToolbarPanel.Color) },
+                    pressed = activePanel == ToolbarPanel.Color,
+                    isToggle = true,
+                    fill = selectedColor.copy(alpha = 1f)
+                ) {
+                    Icon(Icons.Rounded.Palette, "Colour picker")
+                }
             }
         }
     }
@@ -305,7 +262,6 @@ fun PathPanel(viewModel: DrawingViewModel) {
     val pointIsCorner by remember(viewModel) { viewModel.uiState.map { it.pathPointUnderCursorIsCorner }.distinctUntilChanged() }.collectAsState(null)
 
     Column(modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition)) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
         if (points < 2) {
             // The gesture is new to this app, so it is spelled out rather than left to be
             // discovered by pressing the one button and seeing what happens.
@@ -375,7 +331,6 @@ fun SelectionPanel(viewModel: DrawingViewModel) {
     val isSelectionToolActive = drawingMode.isSelectionTool()
 
     Column(modifier = Modifier.animateContentSize(animationSpec = MotionTokens.panelTransition)) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
         // This panel swaps between three quite differently sized layouts while staying open.
         when {
             hasFloating -> {
@@ -517,18 +472,6 @@ fun ExtraToolItem(
     }
 }
 
-/** Hairline divider grouping the toolbar row into brush/color, settings and history. */
-@Composable
-private fun ToolbarSeparator() {
-    Box(
-        modifier = Modifier
-            .padding(horizontal = 4.dp)
-            .width(1.dp)
-            .height(24.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-    )
-}
-
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
 fun ToolToggleButton(
@@ -586,8 +529,6 @@ fun ColorPickerContent(viewModel: DrawingViewModel, onDismiss: () -> Unit) {
     val isEyeDropperActive by remember(viewModel) { viewModel.uiState.map { it.isEyeDropperMode }.distinctUntilChanged() }.collectAsState(false)
 
     Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(bottom = 4.dp))
-        
         if (colorHistory.isNotEmpty()) {
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
@@ -654,7 +595,6 @@ fun QuickBrushPanel(
     var brushToDelete by remember { mutableStateOf<BrushConfig?>(null) }
 
     Column {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             // Size/Softness/Opacity/Flow sliders live on the FAB's right satellite gate
             // (see HoverDrawButton). There is no button into the studio here any more: the
@@ -913,7 +853,6 @@ fun GlobalSettingsPanel(viewModel: DrawingViewModel) {
     // exactly while the value matters, and is marked as draggable. What is left is the one
     // setting that belongs to no tool.
     Column {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
         // The label follows the tool rather than staying put: with Fine armed this is no longer
         // a setting about drawing, it is what the cursor does at all times, and this row is the
         // only place that says so.

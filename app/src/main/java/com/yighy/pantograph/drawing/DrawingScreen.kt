@@ -190,46 +190,35 @@ fun DrawingScreen(
             // Reference Image Layer
             ReferenceImageOverlay(viewModel, viewportSize)
 
-            // Bottom Toolbar - Animated appearance. Present in fullscreen as well, where it
-            // carries only what an armed tool needs and disappears again with it.
-            Box(
+            // Bottom bar: a group of buttons in each corner, the panel they open floating above.
+            // Present in fullscreen as well, where it carries only what an armed tool needs and
+            // disappears again with it. The same 16dp from the edges as the buttons along the
+            // top, so the four corners line up.
+            DrawingToolbar(
+                viewModel = viewModel,
+                onOpenBrushStudio = { showBrushStudio = true },
+                activePanel = activePanel,
+                onActivePanelChange = { activePanel = it },
+                armedToolsOnly = isFullscreen,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 16.dp, vertical = 32.dp)
-                    .padding(bottom = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding())
-                    .fillMaxWidth(0.95f),
-                // The toolbar sizes itself now (it hugs its row when collapsed), so it has
-                // to be centred here rather than left to sit at the start edge.
-                contentAlignment = Alignment.BottomCenter
-            ) {
-                DrawingToolbar(
-                    viewModel = viewModel,
-                    onOpenBrushStudio = { showBrushStudio = true },
-                    activePanel = activePanel,
-                    onActivePanelChange = { activePanel = it },
-                    armedToolsOnly = isFullscreen
-                )
-            }
+                    .windowInsetsPadding(
+                        WindowInsets.systemBars.union(WindowInsets.displayCutout)
+                            .only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+                    )
+                    .padding(16.dp)
+            )
             
-            // Back Button - Styled EXACTLY the same as top right actions
-            if (!isFullscreen) Surface(
+            // Back: a group of one, so it is round all the way, like the ends of the others.
+            if (!isFullscreen) GroupedButton(
+                GroupPosition.Only,
+                onClick = onBack,
                 modifier = Modifier
                     .windowInsetsPadding(topSafeInsets)
                     .padding(16.dp)
-                    .align(Alignment.TopStart),
-                shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 3.dp,
-                shadowElevation = 2.dp
+                    .align(Alignment.TopStart)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                }
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
             }
 
             // Top Right Actions & Layers Panel
@@ -848,119 +837,103 @@ fun LayersAndActionsSection(
         // would hold its gap open for a chip row that is not there. Each child below carries
         // its own top padding instead, which costs nothing while it is hidden.
     ) {
-        // Expressive Grouped Container
-        if (!isFullscreen) Surface(
-            shape = MaterialTheme.shapes.large,
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 3.dp,
-            shadowElevation = 2.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
+        if (!isFullscreen) ButtonGroup {
+            // Extra-tools gate (moved from the bottom toolbar to free up its space) with
+            // Fit-to-Screen folded in as a menu item, taking the slot the standalone
+            // Fullscreen button used to occupy
+            ToolsMenuButton(
+                viewModel = viewModel,
+                drawingMode = drawingMode,
+                isLazyModeActive = isLazyModeActive,
+                isRecoilActive = isRecoilActive,
+                isFullscreen = isFullscreen
+            )
+
+            GroupedButton(
+                GroupPosition.Middle,
+                onClick = onToggleLayers,
+                pressed = showLayersPanel,
+                isToggle = true
             ) {
-                // Extra-tools gate (moved from the bottom toolbar to free up its space) with
-                // Fit-to-Screen folded in as a menu item, taking the slot the standalone
-                // Fullscreen button used to occupy
-                ToolsMenuButton(
-                    viewModel = viewModel,
-                    drawingMode = drawingMode,
-                    isLazyModeActive = isLazyModeActive,
-                    isRecoilActive = isRecoilActive,
-                    isFullscreen = isFullscreen
-                )
+                Icon(Icons.Rounded.Layers, contentDescription = "Layers")
+            }
 
-                // Vertical Separator
-                Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)))
-
-                IconButton(
-                    onClick = onToggleLayers,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = if (showLayersPanel) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                        contentColor = if (showLayersPanel) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                    )
-                ) {
-                    Icon(Icons.Rounded.Layers, contentDescription = "Layers")
+            Box {
+                GroupedButton(GroupPosition.Last, onClick = { showMenu = true }, pressed = showMenu) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "More")
                 }
-
-                Box {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "More")
-                    }
-                    DropdownMenu(
-                        expanded = showMenu, 
-                        onDismissRequest = { showMenu = false },
-                        shape = MaterialTheme.shapes.large,
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ) {
-                        // Leading icons stay untinted, so they take the menu's own
-                        // onSurfaceVariant. Colour here is reserved for saying "this one is
-                        // destructive" (error) - accenting an ordinary action just makes the
-                        // items next to it look disabled, and the accents this menu had
-                        // marked no such thing: "Import Image" only opens the two entries
-                        // below it, which were the grey ones.
-                        DropdownMenuItem(
-                            text = { Text("Save Project") },
-                            onClick = { viewModel.manualSave(); showMenu = false },
-                            leadingIcon = { Icon(Icons.Rounded.Save, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Import Image") },
-                            onClick = { showImportOptions = !showImportOptions },
-                            leadingIcon = { Icon(Icons.Rounded.AddPhotoAlternate, null) },
-                            trailingIcon = {
-                                // One chevron that turns over, rather than two that swap: the
-                                // rotation is continuous with the rows unfolding underneath,
-                                // where a swap would pop at whichever frame it happened on.
-                                val chevron by animateFloatAsState(
-                                    targetValue = if (showImportOptions) 180f else 0f,
-                                    animationSpec = MotionTokens.expressiveEnter,
-                                    label = "importChevron"
-                                )
-                                Icon(Icons.Rounded.ExpandMore, null, modifier = Modifier.rotate(chevron))
-                            }
-                        )
-                        // The two entries fold out of the row above instead of appearing
-                        // whole, so it reads as one row opening rather than the menu
-                        // reshuffling under the finger.
-                        AnimatedVisibility(
-                            visible = showImportOptions,
-                            enter = fadeIn(MotionTokens.expressiveEnter) + expandVertically(MotionTokens.panelTransition),
-                            exit = fadeOut(MotionTokens.expressiveExit) + shrinkVertically(MotionTokens.panelTransition)
-                        ) {
-                            Column {
-                                DropdownMenuItem(
-                                    text = { Text("Reference") },
-                                    onClick = { imagePickerLauncher.launch(arrayOf("image/*")); showMenu = false },
-                                    leadingIcon = { Icon(Icons.Rounded.Image, null) },
-                                    modifier = Modifier.padding(start = 16.dp)
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("As New Layer") },
-                                    onClick = { layerImportLauncher.launch("image/*"); showMenu = false },
-                                    leadingIcon = { Icon(Icons.Rounded.Layers, null) },
-                                    modifier = Modifier.padding(start = 16.dp)
-                                )
-                            }
+                DropdownMenu(
+                    expanded = showMenu, 
+                    onDismissRequest = { showMenu = false },
+                    shape = MaterialTheme.shapes.large,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    // Leading icons stay untinted, so they take the menu's own
+                    // onSurfaceVariant. Colour here is reserved for saying "this one is
+                    // destructive" (error) - accenting an ordinary action just makes the
+                    // items next to it look disabled, and the accents this menu had
+                    // marked no such thing: "Import Image" only opens the two entries
+                    // below it, which were the grey ones.
+                    DropdownMenuItem(
+                        text = { Text("Save Project") },
+                        onClick = { viewModel.manualSave(); showMenu = false },
+                        leadingIcon = { Icon(Icons.Rounded.Save, null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Import Image") },
+                        onClick = { showImportOptions = !showImportOptions },
+                        leadingIcon = { Icon(Icons.Rounded.AddPhotoAlternate, null) },
+                        trailingIcon = {
+                            // One chevron that turns over, rather than two that swap: the
+                            // rotation is continuous with the rows unfolding underneath,
+                            // where a swap would pop at whichever frame it happened on.
+                            val chevron by animateFloatAsState(
+                                targetValue = if (showImportOptions) 180f else 0f,
+                                animationSpec = MotionTokens.expressiveEnter,
+                                label = "importChevron"
+                            )
+                            Icon(Icons.Rounded.ExpandMore, null, modifier = Modifier.rotate(chevron))
                         }
-                        DropdownMenuItem(
-                            text = { Text("Export as PNG") },
-                            onClick = { viewModel.exportProject(context, "png"); showMenu = false },
-                            leadingIcon = { Icon(Icons.Rounded.IosShare, null) }
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                        DropdownMenuItem(
-                            text = { Text("Settings") },
-                            onClick = { onNavigateToSettings(); showMenu = false },
-                            leadingIcon = { Icon(Icons.Rounded.Settings, null) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("About") },
-                            onClick = { showAboutDialog = true; showMenu = false },
-                            leadingIcon = { Icon(Icons.Rounded.Info, null) }
-                        )
+                    )
+                    // The two entries fold out of the row above instead of appearing
+                    // whole, so it reads as one row opening rather than the menu
+                    // reshuffling under the finger.
+                    AnimatedVisibility(
+                        visible = showImportOptions,
+                        enter = fadeIn(MotionTokens.expressiveEnter) + expandVertically(MotionTokens.panelTransition),
+                        exit = fadeOut(MotionTokens.expressiveExit) + shrinkVertically(MotionTokens.panelTransition)
+                    ) {
+                        Column {
+                            DropdownMenuItem(
+                                text = { Text("Reference") },
+                                onClick = { imagePickerLauncher.launch(arrayOf("image/*")); showMenu = false },
+                                leadingIcon = { Icon(Icons.Rounded.Image, null) },
+                                modifier = Modifier.padding(start = 16.dp)
+                            )
+                            DropdownMenuItem(
+                                text = { Text("As New Layer") },
+                                onClick = { layerImportLauncher.launch("image/*"); showMenu = false },
+                                leadingIcon = { Icon(Icons.Rounded.Layers, null) },
+                                modifier = Modifier.padding(start = 16.dp)
+                            )
+                        }
                     }
+                    DropdownMenuItem(
+                        text = { Text("Export as PNG") },
+                        onClick = { viewModel.exportProject(context, "png"); showMenu = false },
+                        leadingIcon = { Icon(Icons.Rounded.IosShare, null) }
+                    )
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                    DropdownMenuItem(
+                        text = { Text("Settings") },
+                        onClick = { onNavigateToSettings(); showMenu = false },
+                        leadingIcon = { Icon(Icons.Rounded.Settings, null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("About") },
+                        onClick = { showAboutDialog = true; showMenu = false },
+                        leadingIcon = { Icon(Icons.Rounded.Info, null) }
+                    )
                 }
             }
         }
@@ -1096,16 +1069,10 @@ private fun ToolsMenuButton(
     val isActive = showTools || isBucketFill || isLazyModeActive || isRecoilActive || isAnchorActive || isFineCursor || isLoupeActive || isSelectionMode || drawingMode is DrawingMode.Gradient
 
     Box {
-        IconButton(
-            onClick = { showTools = true },
-            colors = IconButtonDefaults.iconButtonColors(
-                containerColor = if (isActive) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                contentColor = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-            )
-        ) {
+        GroupedButton(GroupPosition.First, onClick = { showTools = true }, pressed = isActive) {
             // A fixed glyph: this button used to morph into whichever extra tool was on, which
             // made the one permanent entry point to the tools menu look like a different
-            // control depending on state. The tinted container still says a tool is active.
+            // control depending on state. Its pressed look still says a tool is active.
             Icon(Icons.Rounded.Architecture, contentDescription = "Tools")
         }
         DropdownMenu(
