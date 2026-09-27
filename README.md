@@ -25,10 +25,6 @@ Named after the 1821 drafting instrument that reproduced a drawing elsewhere as 
 
 Download the APK from [Releases](https://github.com/yighy/Pantograph/releases). Requires Android 12 or newer.
 
-To hear about new releases, turn on **Check for updates** in Settings: the app then looks on
-GitHub once a day and says so on its home screen, with a link to the release page. It downloads
-nothing itself, and pre-releases are left out.
-
 > **Before 1.0, an update can clear your projects.** When the storage format changes, the app
 > starts from an empty database rather than migrating the old one. Releases that do this say so
 > at the top of their notes — export anything you want to keep first.
