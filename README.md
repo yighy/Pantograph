@@ -39,8 +39,8 @@ Download the APK from [Releases](https://github.com/yighy/Pantograph/releases). 
 
 ### Satellite gates
 
-Four pills orbit the floating button, held and dragged like a gear stick so you never look away
-from the canvas.
+Four arcs ring the round floating button, held and dragged like a gear stick so you never look
+away from the canvas.
 
 - **Top — colour.** Hue, saturation, brightness, and the eyedropper.
 - **Right — brush.** Size, opacity, flow, softness.

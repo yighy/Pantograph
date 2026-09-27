@@ -34,6 +34,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -312,7 +314,10 @@ fun HoverDrawButton(
             FloatingActionButton(
                 onClick = { },
                 modifier = Modifier.fillMaxSize(),
-                shape = RoundedCornerShape(28), // Percentage based shape for expressive look at all sizes
+                // A disc rather than Material's rounded square: this is the pen, not an action
+                // button, and it sits among rings - the cursor's reticle, the anchor, the loupe's
+                // crosshair. Its satellites are full pills for the same family of shapes.
+                shape = CircleShape,
                 containerColor = container,
                 contentColor = contentColorFor(container)
             ) {
@@ -346,7 +351,6 @@ fun HoverDrawButton(
         // size: the pulse expands it by half the scale factor on each side, which at large
         // FAB settings was more than the whole resting gap.
         val gapPx = with(density) { 6.dp.toPx() } + fabSizePx * (fabPressScale - 1f) / 2f
-        val satShape = RoundedCornerShape(30)
 
         val fabX = localX.coerceIn(0f, (screenWidth - fabSizePx).coerceAtLeast(0f))
         val fabY = localY.coerceIn(0f, (screenHeight - fabSizePx).coerceAtLeast(0f))
@@ -362,17 +366,48 @@ fun HoverDrawButton(
             screenWidth = screenWidth,
             screenHeight = screenHeight
         )
-        val rightSatX = placement.levelsX
-        val rightSatY = placement.levelsY
-        val bottomSatX = placement.modeX
-        val bottomSatY = placement.modeY
-        val colourSatX = placement.colourX
-        val colourSatY = placement.colourY
-        val toolSatX = placement.toolX
-        val toolSatY = placement.toolY
+        // Arcs of rings around the round button. The layout decides which side each satellite
+        // takes and how many rings out - an edge can move one across or queue it behind
+        // another - and the arc is built for that slot.
+        fun arcFor(slot: SatelliteLayout.Slot) = SatelliteArcs.arc(
+            slot = slot,
+            centerX = fabX + fabSizePx / 2f,
+            centerY = fabY + fabSizePx / 2f,
+            buttonRadius = fabSizePx / 2f,
+            gapPx = gapPx,
+            thicknessPx = miniThicknessPx
+        )
+        val levelsArc = arcFor(placement.levelsSlot)
+        val modeArc = arcFor(placement.modeSlot)
+        val colourArc = arcFor(placement.colourSlot)
+        val toolArc = arcFor(placement.toolSlot)
+        fun SatelliteArcs.Arc.dpSize() = with(density) { DpSize(width.toDp(), height.toDp()) }
+        // A glyph belongs in the middle of its arc, which the arc's bow puts a couple of dp
+        // further out than the middle of the box around it.
+        fun SatelliteArcs.Arc.contentAlignment() = Alignment { size, _, _ ->
+            IntOffset(
+                (contentCenterX - size.width / 2f).roundToInt(),
+                (contentCenterY - size.height / 2f).roundToInt()
+            )
+        }
+
+        val rightSatX = levelsArc.x
+        val rightSatY = levelsArc.y
+        val bottomSatX = modeArc.x
+        val bottomSatY = modeArc.y
+        val colourSatX = colourArc.x
+        val colourSatY = colourArc.y
+        val toolSatX = toolArc.x
+        val toolSatY = toolArc.y
+        val levelsSize = levelsArc.dpSize()
+        val modeSize = modeArc.dpSize()
+        val colourSize = colourArc.dpSize()
+        val levelsShape: Shape = SatelliteArcShape(levelsArc)
+        val modeShape: Shape = SatelliteArcShape(modeArc)
+        val colourShape: Shape = SatelliteArcShape(colourArc)
+        val toolShape: Shape = SatelliteArcShape(toolArc)
         // Turned on its side when it falls back to a flank rather than stacking.
-        val toolSatWidthDp = if (placement.toolStacked) fabSizeSetting else miniThicknessDp
-        val toolSatHeightDp = if (placement.toolStacked) miniThicknessDp else fabSizeSetting
+        val toolSize = toolArc.dpSize()
 
         // Satellites clear out while the FAB is held: mid-stroke they are dead weight beside
         // the cursor, and a stray second finger landing on one would change the brush in the
@@ -446,13 +481,13 @@ fun HoverDrawButton(
                 .offset { IntOffset(rightSatX.roundToInt(), rightSatY.roundToInt()) }
                 .scale(brushGateScale * satelliteScale)
                 .alpha(satelliteAlpha)
-                .size(miniThicknessDp.dp, fabSizeSetting.dp)
+                .size(levelsSize)
                 .semantics {
                     contentDescription = "Brush levels"
                     customActions = brushGateActions
                 }
-                .shadow(4.dp, satShape)
-                .clip(satShape)
+                .shadow(4.dp, levelsShape)
+                .clip(levelsShape)
                 .background(brushGateBg)
                 .pointerInput(satelliteGateSensitivity) {
                     awaitEachGesture {
@@ -552,7 +587,7 @@ fun HoverDrawButton(
                         }
                     }
                 },
-            contentAlignment = Alignment.Center
+            contentAlignment = levelsArc.contentAlignment()
         ) {
             // Chevrons flanking the icon: a plain centred glyph reads as "tap me", which is
             // the one thing this control does not do. They sit on the pill's long axis, the
@@ -656,7 +691,7 @@ fun HoverDrawButton(
                 .offset { IntOffset(bottomSatX.roundToInt(), bottomSatY.roundToInt()) }
                 .scale(modeGateScale * satelliteScale)
                 .alpha(satelliteAlpha)
-                .size(fabSizeSetting.dp, miniThicknessDp.dp)
+                .size(modeSize)
                 .semantics {
                     contentDescription = when {
                         isEraserMode && isLineMode -> "Drawing mode: straight line eraser"
@@ -666,8 +701,8 @@ fun HoverDrawButton(
                     }
                     customActions = modeGateActions
                 }
-                .shadow(4.dp, satShape)
-                .clip(satShape)
+                .shadow(4.dp, modeShape)
+                .clip(modeShape)
                 .background(modeGateBg)
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -748,7 +783,7 @@ fun HoverDrawButton(
                         }
                     }
                 },
-            contentAlignment = Alignment.Center
+            contentAlignment = modeArc.contentAlignment()
         ) {
             // Same affordance as the brush gate, turned along this pill's own axis.
             //
@@ -854,13 +889,13 @@ fun HoverDrawButton(
                 .offset { IntOffset(colourSatX.roundToInt(), colourSatY.roundToInt()) }
                 .scale(colourGateScale * satelliteScale)
                 .alpha(satelliteAlpha)
-                .size(fabSizeSetting.dp, miniThicknessDp.dp)
+                .size(colourSize)
                 .semantics {
                     contentDescription = if (isEyeDropperActive) "Colour, eyedropper armed" else "Colour"
                     customActions = colourGateActions
                 }
-                .shadow(4.dp, satShape)
-                .clip(satShape)
+                .shadow(4.dp, colourShape)
+                .clip(colourShape)
                 .background(colourGateBg)
                 .pointerInput(satelliteGateSensitivity) {
                     awaitEachGesture {
@@ -958,7 +993,7 @@ fun HoverDrawButton(
                         }
                     }
                 },
-            contentAlignment = Alignment.Center
+            contentAlignment = colourArc.contentAlignment()
         ) {
             val colourHintAlpha by animateFloatAsState(
                 targetValue = if (colourGateActive) 0f else 0.55f,
@@ -1056,15 +1091,15 @@ fun HoverDrawButton(
                 .offset { IntOffset(toolSatX.roundToInt(), toolSatY.roundToInt()) }
                 .scale(satelliteScale * toolSatScale)
                 .alpha(satelliteAlpha)
-                .size(toolSatWidthDp.dp, toolSatHeightDp.dp)
+                .size(toolSize)
                 .semantics {
                     contentDescription = pinnedTools.firstOrNull()
                         ?.let { "Quick tools, ${pinnedTools.size} pinned, first is ${it.label}" }
                         ?: "Quick tool slot, empty"
                     customActions = toolGateActions
                 }
-                .shadow(4.dp, satShape)
-                .clip(satShape)
+                .shadow(4.dp, toolShape)
+                .clip(toolShape)
                 .background(toolSatBg)
                 .pointerInput(Unit) {
                     awaitEachGesture {
@@ -1123,7 +1158,7 @@ fun HoverDrawButton(
                         }
                     }
                 },
-            contentAlignment = Alignment.Center
+            contentAlignment = toolArc.contentAlignment()
         ) {
             // Always the pin, never the pinned tool's own glyph. A satellite that morphs into
             // whatever is pinned loses its identity - you can no longer tell at a glance which
