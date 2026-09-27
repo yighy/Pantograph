@@ -58,6 +58,8 @@ fun LayersAndActionsSection(
     var showAboutDialog by remember { mutableStateOf(false) }
     var showTimelapseDialog by remember { mutableStateOf(false) }
     val timelapse by viewModel.timelapseInfo.collectAsState()
+    val timelapseEnabled by viewModel.timelapseEnabled.collectAsState()
+    val recording = timelapseEnabled && timelapse.recording
 
     LaunchedEffect(showMenu) {
         if (!showMenu) showImportOptions = false
@@ -181,7 +183,7 @@ fun LayersAndActionsSection(
                         onClick = { viewModel.exportProject(context, "png"); showMenu = false },
                         leadingIcon = { Icon(Icons.Rounded.IosShare, null) }
                     )
-                    DropdownMenuItem(
+                    if (timelapseEnabled) DropdownMenuItem(
                         text = { Text("Timelapse") },
                         onClick = { showTimelapseDialog = true; showMenu = false },
                         leadingIcon = { Icon(Icons.Rounded.Timelapse, null) }
@@ -213,7 +215,7 @@ fun LayersAndActionsSection(
         // while the transition is still running, so reading activeTools directly emptied the
         // row on the first frame of the close and left an empty box to collapse on its own -
         // same reason lastEditingLayerId exists further down.
-        val anyChips = activeTools.isNotEmpty() || activeLayerLocked || hasTraces || timelapse.recording
+        val anyChips = activeTools.isNotEmpty() || activeLayerLocked || hasTraces || recording
         var lastTools by remember { mutableStateOf(activeTools) }
         var lastLocked by remember { mutableStateOf(false) }
         var lastTraces by remember { mutableStateOf(false) }
@@ -222,7 +224,7 @@ fun LayersAndActionsSection(
             lastTools = activeTools
             lastLocked = activeLayerLocked
             lastTraces = hasTraces
-            lastRecording = timelapse.recording
+            lastRecording = recording
         }
 
         AnimatedVisibility(

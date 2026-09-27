@@ -53,6 +53,7 @@ fun SettingsScreen(
     val keepUndoneStrokes by preferenceManager.keepUndoneStrokes.collectAsState(initial = false)
     val satelliteGateSensitivity by preferenceManager.satelliteGateSensitivity.collectAsState(initial = 1f)
     val checkForUpdates by preferenceManager.checkForUpdates.collectAsState(initial = false)
+    val experimentalFeatures by preferenceManager.experimentalFeatures.collectAsState(initial = false)
     val lastUpdateCheck by preferenceManager.lastUpdateCheckTime.collectAsState(initial = 0L)
     val updateChecker = remember(preferenceManager) { UpdateChecker(preferenceManager) }
     // Only the result of a check asked for here; the automatic one reports on the home screen.
@@ -197,6 +198,16 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            // Features that work but are still being tried out: off until chosen here, so no one
+            // meets them by accident. One switch for all of them, and the subtitle names what it
+            // turns on - keep it in step as features come and go.
+            SectionHeader("Experimental")
+            SwitchRow(
+                "Experimental features",
+                subtitle = "Timelapse",
+                checked = experimentalFeatures
+            ) { scope.launch { preferenceManager.setExperimentalFeatures(it) } }
 
             SectionHeader("About")
             ValueRow("Version", versionName)

@@ -68,6 +68,7 @@ class PreferenceManager(private val context: Context) {
         val LAST_UPDATE_CHECK_KEY = longPreferencesKey("last_update_check")
         val LATEST_RELEASE_KEY = stringPreferencesKey("latest_release")
         val DISMISSED_RELEASE_KEY = stringPreferencesKey("dismissed_release")
+        val EXPERIMENTAL_FEATURES_KEY = booleanPreferencesKey("experimental_features")
     }
 
     // Every flow below ends in distinctUntilChanged, and it is load-bearing rather than tidy.
@@ -427,6 +428,22 @@ class PreferenceManager(private val context: Context) {
     suspend fun setSatelliteGateSensitivity(sensitivity: Float) {
         context.dataStore.edit { preferences ->
             preferences[SATELLITE_GATE_SENSITIVITY_KEY] = sensitivity
+        }
+    }
+
+    // ---- experimental ----
+
+    /**
+     * One switch for every feature still being tried out - today the timelapse. Off until turned
+     * on in Settings; each such feature checks this rather than having a setting of its own.
+     */
+    val experimentalFeatures: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[EXPERIMENTAL_FEATURES_KEY] ?: false
+    }.distinctUntilChanged()
+
+    suspend fun setExperimentalFeatures(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[EXPERIMENTAL_FEATURES_KEY] = enabled
         }
     }
 

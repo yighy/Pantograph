@@ -71,6 +71,13 @@ class TimelapseRecorder(
     private val lock = Mutex()
     private val loaded = CompletableDeferred<Unit>()
 
+    /**
+     * Whether experimental features are on, the timelapse being one. Off, a project set to record
+     * simply does not, until it is on again: nothing is recorded that nothing on screen says is
+     * being recorded.
+     */
+    @Volatile var enabled = false
+
     // Read on the main thread, where the drawing changes; the rest lives under the lock.
     @Volatile private var recording = false
     private val strokes = AtomicInteger(0)
@@ -102,14 +109,14 @@ class TimelapseRecorder(
 
     /** The drawing changed. Called on the main thread, after every change to what it shows. */
     fun onDrawingChanged() {
-        if (!recording) return
+        if (!enabled || !recording) return
         changes.incrementAndGet()
         requests.trySend(Unit)
     }
 
     /** A drawing action landed - a stroke, a path, a fill. Counted, not captured: see above. */
     fun onStroke() {
-        if (recording) strokes.incrementAndGet()
+        if (enabled && recording) strokes.incrementAndGet()
     }
 
     /**

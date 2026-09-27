@@ -24,10 +24,12 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -267,6 +269,10 @@ class DrawingViewModel(
 
         preferenceManager.cursorThickness
             .onEach { thickness -> session.update { it.copy(cursorThickness = thickness) } }
+            .launchIn(viewModelScope)
+
+        preferenceManager.experimentalFeatures
+            .onEach { enabled -> timelapse.enabled = enabled }
             .launchIn(viewModelScope)
 
         preferenceManager.fillTolerance
@@ -1261,6 +1267,10 @@ class DrawingViewModel(
     // ============================ Timelapse ============================
 
     val timelapseInfo: StateFlow<TimelapseInfo> = timelapse.info
+
+    /** Experimental features, the timelapse among them: off, its menu entry and chip are not shown. */
+    val timelapseEnabled: StateFlow<Boolean> =
+        preferenceManager.experimentalFeatures.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun setTimelapseRecording(on: Boolean) = timelapse.setRecording(on)
 
