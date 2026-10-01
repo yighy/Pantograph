@@ -3,7 +3,7 @@
 <p align="center">A cursor-based drawing app for Android</p>
 <p align="center">
   <a href="https://github.com/yighy/Pantograph/releases">
-    <img src="https://img.shields.io/github/v/release/yighy/Pantograph?style=for-the-badge&logo=GitHub&include_prereleases" alt="GitHub release" />
+    <img src="https://img.shields.io/github/v/release/yighy/Pantograph?style=for-the-badge&logo=GitHub" alt="GitHub release" />
   </a>
 </p>
 
