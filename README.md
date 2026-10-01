@@ -25,6 +25,10 @@ Named after the 1821 drafting instrument that reproduced a drawing elsewhere as 
 
 Download the APK from [Releases](https://github.com/yighy/Pantograph/releases). Requires Android 12 or newer.
 
+To hear about new releases, turn on **Check for updates** in Settings: the app then looks on
+GitHub once a day and says so on its home screen, with a link to the release page. It downloads
+nothing itself, and pre-releases are left out.
+
 > **Before 1.0, an update can clear your projects.** When the storage format changes, the app
 > starts from an empty database rather than migrating the old one. Releases that do this say so
 > at the top of their notes — export anything you want to keep first.
@@ -62,6 +66,7 @@ away from the canvas.
 - Path: place points and bend a curve through them.
 - Selection: lasso, rectangle, magic wand, colour select — move, transform, duplicate, invert.
 - Lazy mode, for smooth curves.
+- Anchor: while you hold the button, every line starts from the same point, which the finger on the button moves.
 - Fine: slow the cursor down even with the pen up.
 - Loupe: a magnified view of the canvas under the brush.
 
@@ -71,6 +76,7 @@ away from the canvas.
 - Image import, a floating reference image, colour history.
 - Fullscreen, leaving only the floating button, its satellites and the chips.
 - Export as PNG.
+- Timelapse (experimental, turn on Experimental features in Settings): record a drawing as you make it, and export it as an MP4 of 15 s, 30 s or its own pace.
 
 ## Building
 
