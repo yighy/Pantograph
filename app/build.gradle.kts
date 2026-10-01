@@ -67,6 +67,12 @@ android {
     }
 }
 
+// Names the APK for the app and its version - Pantograph-0.18.0-release.apk - so it can be
+// attached to a release as it comes out of the build, without renaming.
+base {
+    archivesName.set("Pantograph-${android.defaultConfig.versionName}")
+}
+
 dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
